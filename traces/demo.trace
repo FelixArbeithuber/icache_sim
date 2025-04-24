@@ -1,7 +1,7 @@
 // this is a comment
 
 // the instruction size determines the step size of address ranges
-INSTRUCTION_SIZE = 1b
+INSTRUCTION_SIZE = 8b
 
 // this is a function definition
 fn b() {

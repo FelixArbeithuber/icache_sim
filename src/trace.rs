@@ -209,7 +209,7 @@ fn block<'a>(input: &mut &'a str) -> ModalResult<Vec<Op<'a>>> {
         (multispace, '{').context(StrContext::Label("block start")),
         cut_err(
             repeat_till(
-                1..,
+                0..,
                 op,
                 (multispace, '}').context(StrContext::Label("block end")),
             )
