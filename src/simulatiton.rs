@@ -116,7 +116,7 @@ impl<const CLOCK_SPEED_MHZ: u32, const CYCLES_HIT: u32, const CYCLES_MISS: u32>
         for (sim, time) in results {
             sim.print_summary();
             println!(
-                "Relative Speed: +{:.3}%\n",
+                "Relative Time: +{:.3}%\n",
                 (time - baseline) / baseline * 100.0
             );
         }

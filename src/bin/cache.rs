@@ -10,7 +10,7 @@ fn main() {
     };
 
     lru_cache.print_info();
-    match Simulation::<1_600, 1, 3>::run(&mut lru_cache, &filename) {
+    match Simulation::<1_600, 1, 10>::run(&mut lru_cache, &filename) {
         Ok(simulation_results) => Simulation::compare(&simulation_results),
         Err(e) => println!("{e}"),
     };

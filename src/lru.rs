@@ -21,7 +21,13 @@ impl<const SETS: usize, const WAYS: usize, const LINE_SIZE: usize> LruCache<SETS
         println!("\tSets: {}", SETS);
         println!("\tWays {}", WAYS);
         println!("\tLine-Size: {}B", LINE_SIZE);
-        println!()
+        println!(
+            "\t| {} tag bits | {} set bits | {} offset bits |",
+            std::mem::size_of::<usize>() * 8 - (self.set_index_width + self.offset_width),
+            self.set_index_width,
+            self.offset_width
+        );
+        println!();
     }
 
     pub fn new() -> Self {
@@ -58,7 +64,7 @@ impl<const SETS: usize, const WAYS: usize, const LINE_SIZE: usize> LruCache<SETS
         let set_index = (address >> self.offset_width) & self.set_index_mask;
         let tag = address >> (self.set_index_width + self.offset_width);
 
-        unsafe { self.sets.get_unchecked_mut(set_index) }.get(address, tag)
+        self.sets.get_mut(set_index).unwrap().get(address, tag)
     }
 }
 
@@ -107,20 +113,20 @@ impl<const LINES: usize> CacheSet<LINES> {
                     .map(|(meta_idx, _)| meta_idx)
                     .unwrap();
 
-                let tmp = unsafe { *self.lru.get_unchecked(meta_idx) };
+                let tmp = *self.lru.get(meta_idx).unwrap();
                 for i in (1..=meta_idx).rev() {
-                    unsafe { *self.lru.get_unchecked_mut(i) = *self.lru.get_unchecked(i - 1) };
+                    *self.lru.get_mut(i).unwrap() = *self.lru.get(i - 1).unwrap();
                 }
-                unsafe { *self.lru.get_unchecked_mut(0) = tmp };
+                *self.lru.get_mut(0).unwrap() = tmp;
 
                 CacheHit::Hit
             }
             // Cache-Miss: replace least recently used cache-line and set it as the most recently used
             None => {
                 self.lru.rotate_right(1);
-                let lru = unsafe { *self.lru.get_unchecked(0) };
+                let lru = *self.lru.get(0).unwrap();
 
-                let lru_line = unsafe { self.lines.get_unchecked_mut(lru) };
+                let lru_line = self.lines.get_mut(lru).unwrap();
                 let prev = lru_line.address;
                 *lru_line = CacheLine {
                     address: Some(address),
