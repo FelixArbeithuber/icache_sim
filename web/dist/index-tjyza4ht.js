@@ -19750,7 +19750,7 @@ function setText(cm, text) {
   });
 }
 async function setTrace(trace) {
-  return fetch(`/traces/${trace}`).then((response) => response.text()).then((trace2) => setText(editor, trace2));
+  return fetch(`/lru_sim/traces/${trace}`).then((response) => response.text()).then((trace2) => setText(editor, trace2));
 }
 lru_sim_default().then(() => {
   const simulateBtn = document.querySelector("#simulate-btn");
