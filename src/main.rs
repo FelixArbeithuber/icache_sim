@@ -6,7 +6,7 @@ use lru::{CacheHit, MainMemory};
 mod lru;
 
 fn main() {
-    let main_memory = MainMemory::<128, 4>::new(std::array::from_fn(|i| i as u8));
+    let main_memory = MainMemory::<256, 4>::new(std::array::from_fn(|i| i as u8));
     let mut lru_cache = main_memory.create_cache::<8, 4>();
 
     let mut stdout = stdout();
