@@ -74,7 +74,7 @@ impl<'mm, const SIZE: usize, const SETS: usize, const LINES: usize, const LINE_S
         }
     }
 
-    pub fn get(&mut self, address: usize) -> ([u8; LINE_SIZE], CacheHit) {
+    pub fn get(&mut self, address: usize) -> (u8, CacheHit) {
         let set_addr = address / LINE_SIZE * LINE_SIZE;
         let set = &mut self.sets[address / LINE_SIZE % LINES];
 
@@ -93,7 +93,7 @@ impl<'mm, const SIZE: usize, const SETS: usize, const LINES: usize, const LINE_S
                     .unwrap(),
             );
             set.meta.push_front(idx);
-            return (cache_line.line, CacheHit::Hit);
+            return (cache_line.line[address % LINE_SIZE], CacheHit::Hit);
         }
 
         let line = self.main_memory.get(address);
@@ -102,7 +102,7 @@ impl<'mm, const SIZE: usize, const SETS: usize, const LINES: usize, const LINE_S
         set.meta.push_front(lru);
         set.lines[lru] = Some(CacheLine::new(set_addr, line));
 
-        (line, CacheHit::Miss)
+        (line[address % LINE_SIZE], CacheHit::Miss)
     }
 }
 

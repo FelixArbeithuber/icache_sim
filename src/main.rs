@@ -52,7 +52,7 @@ fn main() {
             stdout
                 .write_fmt(format_args!(
                     "{:?}{} ",
-                    data[address % 4],
+                    data,
                     if cache_hit == CacheHit::Hit { "" } else { "!" }
                 ))
                 .unwrap();
