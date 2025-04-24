@@ -38,6 +38,8 @@ impl<const CLOCK_SPEED_MHZ: u32, const CYCLES_HIT: u32, const CYCLES_MISS: u32>
         let simulation_results = trace_file
             .into_iter()
             .map(|trace| {
+                lru_cache.reset();
+
                 let name = trace.name().to_string();
                 trace.into_iter().fold(
                     Simulation {

@@ -50,6 +50,10 @@ impl<const SETS: usize, const WAYS: usize, const LINE_SIZE: usize> LruCache<SETS
         }
     }
 
+    pub fn reset(&mut self) {
+        self.sets = array::from_fn(|_| CacheSet::new());
+    }
+
     pub fn get(&mut self, address: usize) -> CacheHit {
         let set_index = (address >> self.offset_width) & self.set_index_mask;
         let tag = address >> (self.set_index_width + self.offset_width);
