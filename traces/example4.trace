@@ -1,0 +1,51 @@
+INSTRUCTION_SIZE = 32b
+
+// function order 1
+
+fn a1() {
+    0x00..0x1F40
+}
+
+// unrelated function that is not used in the hot path we are analyzing
+fn unrelated1() {
+    0x1F40..0x3E80
+}
+
+fn b1() {
+    0x3E80..0x5DC0
+}
+
+// function order 2
+
+fn a2() {
+    0x00..0x1F40
+}
+
+fn b2() {
+    0x3E80..0x5DC0
+}
+
+// unrelated function that is not used in the hot path we are analyzing
+fn unrelated2() {
+    0x1F40..0x3E80
+}
+
+'order 1' {
+    // loop(10000) {
+    //     a1()
+    //     b1()
+    // }
+}
+
+'order 2' {
+    0x0
+    0x2000
+    0x4000
+    0x6000
+    // 0x8000
+    0x0
+    0x2000
+    0x4000
+    0x6000
+    // 0x8000
+}
