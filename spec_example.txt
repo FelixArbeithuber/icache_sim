@@ -1,0 +1,32 @@
+[
+    Address { addr: 0 },
+    Range { addr_start: 0, addr_end: 32 },
+    FunctionCall { function_name: "abc" },
+    Switch {
+        cases: [
+            SwitchCase {
+                probability: 0.5,
+                block: [
+                    Loop {
+                        count: 10,
+                        block: [
+                            Range { addr_start: 5, addr_end: 6 }
+                        ]
+                    }
+                ]
+            },
+            SwitchCase {
+                probability: 0.5,
+                block: [
+                    Range { addr_start: 3, addr_end: 4 }
+                ]
+            }
+        ]
+    },
+    Loop {
+        count: 10,
+        block: [
+            Range { addr_start: 5, addr_end: 6 }
+        ]
+    }
+]
