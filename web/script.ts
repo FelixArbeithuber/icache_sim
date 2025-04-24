@@ -20,7 +20,7 @@ function setText(cm: EditorView, text: string) {
 }
 
 async function setTrace(trace: string) {
-    return fetch(`/traces/${trace}`)
+    return fetch(`/lru_sim/traces/${trace}`)
         .then((response) => response.text())
         .then((trace) => setText(editor, trace));
 }
