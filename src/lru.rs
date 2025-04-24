@@ -1,7 +1,6 @@
-use std::{array, collections::VecDeque, path::Path};
+use std::{array, collections::VecDeque};
 
-use crate::simulatiton_result::{CacheHit, SimulationResult};
-use crate::trace::Trace;
+use crate::simulatiton::CacheHit;
 
 /// ## const generics
 /// - `SETS`: number of sets in case
@@ -16,6 +15,15 @@ pub struct LruCache<const SETS: usize, const WAYS: usize, const LINE_SIZE: usize
 }
 
 impl<const SETS: usize, const WAYS: usize, const LINE_SIZE: usize> LruCache<SETS, WAYS, LINE_SIZE> {
+    pub fn print_info(&self) {
+        println!("LRU Cache:");
+        println!("\tTotal Size: {}B", LINE_SIZE * WAYS * SETS);
+        println!("\tSets: {}", SETS);
+        println!("\tWays {}", WAYS);
+        println!("\tLine-Size: {}B", LINE_SIZE);
+        println!()
+    }
+
     pub fn new() -> Self {
         // for e.g. 64 different sets we need to index 0..=63
         // the number of bits required to represent that number is log2(64 - 1) + 1
@@ -34,9 +42,6 @@ impl<const SETS: usize, const WAYS: usize, const LINE_SIZE: usize> LruCache<SETS
         let set_index_width = required_bits(SETS);
         let set_index_mask = !(!0usize << set_index_width);
 
-        // println!("offset_width={offset_width}, set_index_width={set_index_width}");
-        // println!("set_index_mask={set_index_mask:#b}");
-
         Self {
             offset_width,
             set_index_width,
@@ -45,39 +50,9 @@ impl<const SETS: usize, const WAYS: usize, const LINE_SIZE: usize> LruCache<SETS
         }
     }
 
-    pub fn simulate(&mut self, file: impl AsRef<Path>) -> Result<SimulationResult, String> {
-        let Ok(file_data) = std::fs::read_to_string(
-            std::env::current_dir()
-                .map_err(|_| "unable to get current directory")?
-                .join(file),
-        ) else {
-            return Err("unable to read file".into());
-        };
-
-        let access_trace = match Trace::try_from(&mut file_data.as_str()) {
-            Ok(access_trace) => access_trace,
-            Err(e) => {
-                return Err(format!("failed to parse access trace file: {e}"));
-            }
-        };
-
-        let mut simulation_result = SimulationResult::new(SETS, WAYS, LINE_SIZE);
-        for address in access_trace.into_iter() {
-            let cache_hit = self.get(address);
-            simulation_result.data.push((address, cache_hit));
-            match cache_hit {
-                CacheHit::Hit => simulation_result.hit_count += 1,
-                CacheHit::Miss { .. } => simulation_result.miss_count += 1,
-            }
-        }
-
-        Ok(simulation_result)
-    }
-
     pub fn get(&mut self, address: usize) -> CacheHit {
         let set_index = (address >> self.offset_width) & self.set_index_mask;
         let tag = address >> (self.set_index_width + self.offset_width);
-        // println!("{address:#13b}, {set_index:#13b}, {tag:#13b}");
 
         self.sets[set_index].get(address, tag)
     }

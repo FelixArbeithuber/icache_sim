@@ -24,7 +24,7 @@ fn e() {
 }
 
 main {
-    loop(1000) {
+    loop(10000) {
         switch:
             (1): {
                 a()
@@ -39,7 +39,7 @@ main {
                 d()
             }
             // (1): {
-            //    e()
+            //     e()
             // }
         endswitch
     }
