@@ -64,7 +64,7 @@ impl<const SETS: usize, const LINES: usize, const LINE_SIZE: usize>
             }
         };
 
-        let mut simulation_result = SimulationResult::new();
+        let mut simulation_result = SimulationResult::new(SETS, LINES, LINE_SIZE);
         for address in access_trace.into_iter() {
             let cache_hit = self.get(address);
             simulation_result.data.push((address, cache_hit));
