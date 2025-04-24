@@ -1,12 +1,13 @@
 use std::path::Path;
 
-use crate::{lru::LruCache, trace::Trace};
+use crate::{lru::LruCache, trace::TraceFile};
 
 #[derive(Debug, Clone, Default)]
 pub struct Simulation<const CLOCK_SPEED_MHZ: u32, const CYCLES_HIT: u32, const CYCLES_MISS: u32> {
-    pub data: Vec<(usize, CacheHit)>,
-    pub hit_count: u32,
-    pub miss_count: u32,
+    name: String,
+    data: Vec<(usize, CacheHit)>,
+    hit_count: u32,
+    miss_count: u32,
 }
 
 impl<const CLOCK_SPEED_MHZ: u32, const CYCLES_HIT: u32, const CYCLES_MISS: u32>
@@ -14,42 +15,52 @@ impl<const CLOCK_SPEED_MHZ: u32, const CYCLES_HIT: u32, const CYCLES_MISS: u32>
 {
     pub fn run<const SETS: usize, const WAYS: usize, const LINE_SIZE: usize>(
         lru_cache: &mut LruCache<SETS, WAYS, LINE_SIZE>,
-        files: &[impl AsRef<Path>],
+        file: impl AsRef<Path>,
     ) -> Result<Vec<Self>, String> {
         let current_dir =
             std::env::current_dir().map_err(|e| format!("unable to get current directory: {e}"))?;
 
-        files
-            .iter()
-            .map(|file| std::fs::read_to_string(current_dir.join(file)).unwrap())
-            .map(|file_data| Self::simulate(lru_cache, file_data.as_str()))
-            .collect()
+        let file_content = std::fs::read_to_string(current_dir.join(file))
+            .map_err(|e| format!("failed to read file: {e}"))?;
+        Self::simulate(lru_cache, file_content.as_str())
     }
 
     fn simulate<const SETS: usize, const WAYS: usize, const LINE_SIZE: usize>(
         lru_cache: &mut LruCache<SETS, WAYS, LINE_SIZE>,
-        mut file_data: &str,
-    ) -> Result<Self, String> {
-        let access_trace = match Trace::try_from(&mut file_data) {
-            Ok(access_trace) => access_trace,
+        file_data: &str,
+    ) -> Result<Vec<Self>, String> {
+        let trace_file = match TraceFile::try_from(file_data) {
+            Ok(trace_file) => trace_file,
             Err(e) => {
                 return Err(format!("failed to parse access trace file: {e}"));
             }
         };
 
-        let mut simulation_result = Self {
-            ..Default::default()
-        };
-        for address in access_trace.into_iter() {
-            let cache_hit = lru_cache.get(address);
-            simulation_result.data.push((address, cache_hit));
-            match cache_hit {
-                CacheHit::Hit => simulation_result.hit_count += 1,
-                CacheHit::Miss { .. } => simulation_result.miss_count += 1,
-            }
-        }
+        let simulation_results = trace_file
+            .into_iter()
+            .map(|trace| {
+                let name = trace.name().to_string();
+                trace.into_iter().fold(
+                    Simulation {
+                        name,
+                        ..Default::default()
+                    },
+                    |mut simulation_result, address| {
+                        let cache_hit = lru_cache.get(address);
 
-        Ok(simulation_result)
+                        simulation_result.data.push((address, cache_hit));
+                        match cache_hit {
+                            CacheHit::Hit => simulation_result.hit_count += 1,
+                            CacheHit::Miss { .. } => simulation_result.miss_count += 1,
+                        }
+
+                        simulation_result
+                    },
+                )
+            })
+            .collect();
+
+        Ok(simulation_results)
     }
 
     fn percent_hit(&self) -> f64 {
@@ -62,6 +73,7 @@ impl<const CLOCK_SPEED_MHZ: u32, const CYCLES_HIT: u32, const CYCLES_MISS: u32>
     }
 
     pub fn print_summary(&self) {
+        println!("Trace: {}", self.name);
         println!("Hits: {}, Misses: {}", self.hit_count, self.miss_count);
         println!("Percent Hits: {:.3} %", self.percent_hit());
         println!("Percent Misses: {:.3} %", self.percent_miss());

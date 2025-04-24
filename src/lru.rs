@@ -58,6 +58,14 @@ impl<const SETS: usize, const WAYS: usize, const LINE_SIZE: usize> LruCache<SETS
     }
 }
 
+impl<const SETS: usize, const WAYS: usize, const LINE_SIZE: usize> Default
+    for LruCache<SETS, WAYS, LINE_SIZE>
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug, Clone)]
 struct CacheSet<const LINES: usize> {
     lines: [CacheLine; LINES],

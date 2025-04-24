@@ -4,11 +4,11 @@
 INSTRUCTION_SIZE = 8b
 
 // this is a function definition
-fn b() {
+fn b_() {
     0x00
 }
 
-fn a() {
+fn a_b() {
     0x00
     0x01
 }
@@ -17,11 +17,11 @@ fn c() {
     0x00
 }
 
-// the main block marks the start of the execution
-main {
+// a block marks the start of the execution
+'block-_ name' {
     0x00        // access a single address in memory
     0x00..0x20  // access addresses [0x00, 0x20) (exclusive upper bound)
-    a() // function call
+    a_b() // function call
 
     // a switch statement
     switch:
