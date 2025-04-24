@@ -12,7 +12,7 @@ pub struct Simulation<const CLOCK_SPEED_MHZ: u32, const CYCLES_HIT: u32, const C
 impl<const CLOCK_SPEED_MHZ: u32, const CYCLES_HIT: u32, const CYCLES_MISS: u32>
     Simulation<CLOCK_SPEED_MHZ, CYCLES_HIT, CYCLES_MISS>
 {
-    pub fn run<const SETS: usize, const WAYS: usize, const LINE_SIZE: usize>(
+    pub fn simulate_file<const SETS: usize, const WAYS: usize, const LINE_SIZE: usize>(
         lru_cache: &mut LruCache<SETS, WAYS, LINE_SIZE>,
         file: impl AsRef<Path>,
     ) -> Result<Vec<Self>, String> {
@@ -24,7 +24,7 @@ impl<const CLOCK_SPEED_MHZ: u32, const CYCLES_HIT: u32, const CYCLES_MISS: u32>
         Self::simulate(lru_cache, file_content.as_str())
     }
 
-    fn simulate<const SETS: usize, const WAYS: usize, const LINE_SIZE: usize>(
+    pub fn simulate<const SETS: usize, const WAYS: usize, const LINE_SIZE: usize>(
         lru_cache: &mut LruCache<SETS, WAYS, LINE_SIZE>,
         file_data: &str,
     ) -> Result<Vec<Self>, String> {
@@ -71,32 +71,36 @@ impl<const CLOCK_SPEED_MHZ: u32, const CYCLES_HIT: u32, const CYCLES_MISS: u32>
             / (f64::from(self.hit_count) + f64::from(self.miss_count))
     }
 
-    pub fn print_summary(&self) {
-        println!("Trace: {}", self.name);
-        println!(
-            "Number of Instructions: {}",
-            self.hit_count + self.miss_count
-        );
-        println!("Hits: {}, Misses: {}", self.hit_count, self.miss_count);
-        println!("Percent Hits: {:.3}%", self.percent_hit());
-        println!("Percent Misses: {:.3}%", self.percent_miss());
-        println!(
-            "Assuming Clock-Speed: {CLOCK_SPEED_MHZ} MHz, Cache-Hit: {CYCLES_HIT} cycles, Cache-Miss: {CYCLES_MISS} cycles"
-        );
+    pub fn format_summary(&self) -> String {
+        let mut result = vec![
+            format!("Trace: {}", self.name),
+            format!(
+                "Number of Instructions: {}",
+                self.hit_count + self.miss_count
+            ),
+            format!("Hits: {}, Misses: {}", self.hit_count, self.miss_count),
+            format!("Percent Hits: {:.3}%", self.percent_hit()),
+            format!("Percent Misses: {:.3}%", self.percent_miss()),
+            format!(
+                "Assuming Clock-Speed: {CLOCK_SPEED_MHZ} MHz, Cache-Hit: {CYCLES_HIT} cycles, Cache-Miss: {CYCLES_MISS} cycles"
+            ),
+        ];
 
         let cycle_time_us = f64::from(CLOCK_SPEED_MHZ).recip();
         let total_time_us = f64::from(self.hit_count) * f64::from(CYCLES_HIT) * cycle_time_us
             + f64::from(self.miss_count) * f64::from(CYCLES_MISS) * cycle_time_us;
         if total_time_us >= 1_000_000.0 {
-            println!("Total time: {:.3}s", total_time_us / 1_000_000.0);
+            result.push(format!("Total time: {:.3}s", total_time_us / 1_000_000.0));
         } else if total_time_us >= 1_000.0 {
-            println!("Total time: {:.3}ms", total_time_us / 1_000.0);
+            result.push(format!("Total time: {:.3}ms", total_time_us / 1_000.0));
         } else {
-            println!("Total time: {:.3}us", total_time_us);
+            result.push(format!("Total time: {:.3}us", total_time_us));
         }
+
+        result.join("\n")
     }
 
-    pub fn compare(simulation_results: &[Self]) {
+    pub fn compare(simulation_results: &[Self]) -> String {
         let cycle_time_hit_us = f64::from(CYCLES_HIT) * f64::from(CLOCK_SPEED_MHZ).recip();
         let cycle_time_miss_us = f64::from(CYCLES_MISS) * f64::from(CLOCK_SPEED_MHZ).recip();
         let mut results = simulation_results
@@ -111,15 +115,21 @@ impl<const CLOCK_SPEED_MHZ: u32, const CYCLES_HIT: u32, const CYCLES_MISS: u32>
             .collect::<Vec<_>>();
 
         results.sort_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap());
-
         let (_, baseline) = *results.first().unwrap();
-        for (sim, time) in results {
-            sim.print_summary();
-            println!(
-                "Relative Time: +{:.3}%\n",
-                (time - baseline) / baseline * 100.0
-            );
-        }
+
+        results
+            .into_iter()
+            .flat_map(|(sim, time)| {
+                vec![
+                    sim.format_summary(),
+                    format!(
+                        "Relative Time: +{:.3}%\n",
+                        (time - baseline) / baseline * 100.0
+                    ),
+                ]
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 }
 

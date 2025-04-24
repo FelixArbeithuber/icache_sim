@@ -4,7 +4,6 @@ lru_sim
 
 # output
 out
-dist
 *.tgz
 
 # code coverage

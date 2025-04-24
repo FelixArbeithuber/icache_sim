@@ -1,4 +1,4 @@
-use lru_sim::{lru::LruCache, simulatiton::Simulation};
+use lru_sim::{lru::LruCache, simulation::Simulation};
 
 fn main() {
     // https://developer.arm.com/documentation/102199/0001/Memory-System/Level-1-caches?lang=en
@@ -9,9 +9,16 @@ fn main() {
         return;
     };
 
-    lru_cache.print_info();
-    match Simulation::<1_600, 1, 10>::run(&mut lru_cache, &filename) {
-        Ok(simulation_results) => Simulation::compare(&simulation_results),
+    let current_dir = std::env::current_dir()
+        .map_err(|e| format!("unable to get current directory: {e}"))
+        .unwrap();
+    let file_content = std::fs::read_to_string(current_dir.join(filename))
+        .map_err(|e| format!("failed to read file: {e}"))
+        .unwrap();
+
+    println!("{}", lru_cache.format_info());
+    match Simulation::<1_600, 1, 10>::simulate(&mut lru_cache, &file_content) {
+        Ok(simulation_results) => println!("{}", Simulation::compare(&simulation_results)),
         Err(e) => println!("{e}"),
     };
 }

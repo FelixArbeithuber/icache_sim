@@ -4,8 +4,15 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-rand = "0.9.0"
+rand = { version = "0.9.0", default-features = false, features = [
+    "alloc",
+    "std",
+    "std_rng",
+] }
 winnow = "0.7.4"
 
-[profile.release]
-debug = true
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+wasm-bindgen = "0.2.100"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
