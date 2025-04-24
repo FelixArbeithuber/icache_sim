@@ -71,14 +71,16 @@ fn main() {
         .unwrap();
     stdout
         .write_fmt(format_args!(
-            "Percent Hits: {}\n",
-            f64::from(cache_hits_cnt) / (f64::from(cache_hits_cnt) + f64::from(cache_misses_cnt))
+            "Percent Hits: {}%\n",
+            100.0 * f64::from(cache_hits_cnt)
+                / (f64::from(cache_hits_cnt) + f64::from(cache_misses_cnt))
         ))
         .unwrap();
     stdout
         .write_fmt(format_args!(
-            "Percent Misses: {}\n",
-            f64::from(cache_misses_cnt) / (f64::from(cache_hits_cnt) + f64::from(cache_misses_cnt))
+            "Percent Misses: {}%\n",
+            100.0 * f64::from(cache_misses_cnt)
+                / (f64::from(cache_hits_cnt) + f64::from(cache_misses_cnt))
         ))
         .unwrap();
 }
