@@ -1,6 +1,7 @@
 use std::env::current_dir;
 use std::io::{Write, stdout};
 
+use access_trace::AccessTrace;
 use lru::{CacheHit, MainMemory};
 
 mod access_trace;
@@ -21,47 +22,30 @@ fn main() {
         return;
     };
 
+    let access_trace = match AccessTrace::try_from(&mut file_data.as_str()) {
+        Ok(access_trace) => access_trace,
+        Err(e) => {
+            println!("failed to parse access trace file: {e}");
+            return;
+        }
+    };
+
     let mut cache_hits_cnt = 0;
     let mut cache_misses_cnt = 0;
-    for addr_str in file_data.split("\n") {
-        let addr_str = addr_str.trim();
-        if addr_str.is_empty() {
-            continue;
-        }
+    for address in access_trace {
+        let (data, cache_hit) = lru_cache.get(address);
+        stdout
+            .write_fmt(format_args!(
+                "{:?}{} ",
+                data,
+                if cache_hit == CacheHit::Hit { "" } else { "!" }
+            ))
+            .unwrap();
 
-        let (addr_str, count_str) = addr_str.split_once(":").unwrap_or((addr_str, "1"));
-
-        let Ok(address) = usize::from_str_radix(&addr_str[2..], 16) else {
-            stdout
-                .write_fmt(format_args!("Invalid address: {addr_str}"))
-                .unwrap();
-            return;
-        };
-
-        let Ok(count) = count_str.parse::<usize>() else {
-            stdout
-                .write_fmt(format_args!("Invalid address: {addr_str}"))
-                .unwrap();
-            return;
-        };
-
-        for i in 0..count {
-            let address = address + i;
-
-            let (data, cache_hit) = lru_cache.get(address);
-            stdout
-                .write_fmt(format_args!(
-                    "{:?}{} ",
-                    data,
-                    if cache_hit == CacheHit::Hit { "" } else { "!" }
-                ))
-                .unwrap();
-
-            if cache_hit == CacheHit::Hit {
-                cache_hits_cnt += 1
-            } else {
-                cache_misses_cnt += 1
-            }
+        if cache_hit == CacheHit::Hit {
+            cache_hits_cnt += 1
+        } else {
+            cache_misses_cnt += 1
         }
     }
 

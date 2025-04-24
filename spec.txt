@@ -10,12 +10,14 @@ loop := loop(integer): block
 
 fn a() {
     addr..addr
+    addr..addr
+    addr..addr
 }
 
 {
     0x00
     0x00..0x20
-    abc()
+    a()
 
     switch:
         (0.5): {
