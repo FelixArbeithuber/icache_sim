@@ -9,21 +9,74 @@ use winnow::stream::AsChar;
 use winnow::token::{take, take_while};
 use winnow::{ModalResult, Parser};
 
+#[derive(Debug)]
+pub enum TraceParseError<'a> {
+    ParseError(ParseError<&'a str, ContextError>),
+    SyntaxError(String),
+}
+
+impl std::fmt::Display for TraceParseError<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TraceParseError::ParseError(parse_error) => f.write_fmt(format_args!("{parse_error}")),
+            TraceParseError::SyntaxError(e) => f.write_fmt(format_args!("{e}")),
+        }
+    }
+}
+
+impl std::error::Error for TraceParseError<'_> {}
+
+#[derive(Debug)]
 pub struct AccessTrace<'a> {
     functions: HashMap<&'a str, Function<'a>>,
     main_block: Vec<Statement<'a>>,
 }
 
 impl<'a> TryFrom<&mut &'a str> for AccessTrace<'a> {
-    type Error = ParseError<&'a str, ContextError>;
+    type Error = TraceParseError<'a>;
 
     fn try_from(input: &mut &'a str) -> Result<Self, Self::Error> {
-        (repeat(0.., function), block)
-            .parse(input)
-            .map(|(functions, main_block)| Self {
-                functions,
-                main_block,
-            })
+        let (functions_list, main_block): (Vec<(&'a str, Function<'a>)>, Vec<Statement<'a>>) =
+            (repeat(0.., function), block)
+                .parse(input)
+                .map_err(TraceParseError::ParseError)?;
+
+        let mut functions = HashMap::new();
+        for (function_name, function) in functions_list {
+            if functions.contains_key(function_name) {
+                return Err(TraceParseError::SyntaxError(format!(
+                    "function with name '{function_name}' defined multiple times"
+                )));
+            }
+            functions.insert(function_name, function);
+        }
+
+        let mut queue = Vec::<&Statement<'a>>::from_iter(main_block.iter());
+        for stmt in main_block.iter() {
+            match stmt {
+                Statement::FunctionCall { function_name } => {
+                    if !functions.contains_key(function_name) {
+                        return Err(TraceParseError::SyntaxError(format!(
+                            "unknown function {function_name}"
+                        )));
+                    }
+                }
+                Statement::Loop { count: _, block } => {
+                    queue.extend(block.iter());
+                }
+                Statement::Switch { cases } => {
+                    for case in cases {
+                        queue.extend(case.block.iter());
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        Ok(Self {
+            functions,
+            main_block,
+        })
     }
 }
 
@@ -33,9 +86,12 @@ struct Function<'a> {
 }
 
 fn function<'a>(input: &mut &'a str) -> ModalResult<(&'a str, Function<'a>)> {
-    delimited((multispace0, "fn", space0), (function_name, block), end)
-        .parse_next(input)
-        .map(|(function_name, block)| (function_name, Function { block }))
+    preceded(
+        (multispace0, "fn", space0),
+        separated_pair(function_name, "()", block),
+    )
+    .parse_next(input)
+    .map(|(function_name, block)| (function_name, Function { block }))
 }
 
 fn function_name<'a>(input: &mut &'a str) -> ModalResult<&'a str> {
@@ -175,12 +231,24 @@ fn decimal_integer(input: &mut &str) -> ModalResult<usize> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use winnow::Parser;
 
     #[test]
     fn test() {
-        let mut trace = String::from(
+        let trace = String::from(
             r#"
+
+            fn cde() {
+                0x00
+            }
+
+            fn abc() {
+                0x00
+            }
+
+            fn abc() {
+                0x00
+            }
+
             {
                 0x00
                 0x00..0x20
@@ -204,6 +272,6 @@ mod test {
             "#,
         );
 
-        println!("{:?}", block.parse(trace.as_mut_str()).unwrap());
+        println!("{:?}", AccessTrace::try_from(&mut trace.as_str()).unwrap());
     }
 }

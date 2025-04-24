@@ -1,14 +1,12 @@
 statement := addr | range | function | switch | loop
 addr := integer
 range := addr..addr
-function := fn _name_(addr..addr)
+function := fn _name_() block
 switch := switch:
-    (float):
-        statement+
-    (float):
-        statement+
+    (float): block
+    (float): block
 endswitch
-loop := loop(integer):\n statment+ \n endloop
+loop := loop(integer): block
 
 fn a() {
     addr..addr
@@ -17,7 +15,7 @@ fn a() {
 {
     0x00
     0x00..0x20
-    a()
+    abc()
 
     switch:
         (0.5): {
@@ -30,5 +28,28 @@ fn a() {
 
     loop(10) {
         addr..addr
+    }
+}
+
+---
+
+{
+    0x00
+    0x00..0x20
+    abc()
+
+    switch:
+        (0.5): {
+            loop(10) {
+                0x05..0x06
+            }
+        }
+        (0.5): {
+            0x03..0x04
+        }
+    endswitch
+
+    loop(10) {
+        0x05..0x06
     }
 }
