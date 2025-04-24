@@ -24,7 +24,7 @@ fn e() {
 }
 
 'block 1' {
-    loop(100000) {
+    loop(10000) {
         switch:
             (1): {
                 a()
@@ -43,7 +43,7 @@ fn e() {
 }
 
 'block 2' {
-    loop(100000) {
+    loop(10000) {
         switch:
             (1): {
                 a()
