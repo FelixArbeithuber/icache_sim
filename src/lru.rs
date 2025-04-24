@@ -11,7 +11,7 @@ use crate::trace::Trace;
 pub struct LruCache<const SETS: usize, const LINES: usize, const LINE_SIZE: usize = 1> {
     offset_width: usize,
     set_index_width: usize,
-    sets: [CacheSet<LINES, LINE_SIZE>; SETS],
+    sets: [CacheSet<LINES>; SETS],
 }
 
 impl<const SETS: usize, const LINES: usize, const LINE_SIZE: usize>
@@ -86,12 +86,12 @@ impl<const SETS: usize, const LINES: usize, const LINE_SIZE: usize>
 }
 
 #[derive(Debug, Clone)]
-struct CacheSet<const LINES: usize, const LINE_SIZE: usize> {
+struct CacheSet<const LINES: usize> {
     lines: [CacheLine; LINES],
     lru: VecDeque<usize>,
 }
 
-impl<const LINES: usize, const LINE_SIZE: usize> CacheSet<LINES, LINE_SIZE> {
+impl<const LINES: usize> CacheSet<LINES> {
     fn new() -> Self {
         Self {
             lines: [CacheLine { tag: None }; LINES],

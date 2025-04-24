@@ -2,11 +2,11 @@ use std::collections::HashMap;
 
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use winnow::ascii::{alphanumeric1, float, line_ending, multispace0, space0};
+use winnow::ascii::{alphanumeric1, line_ending, multispace0, space0};
 use winnow::combinator::{
     alt, delimited, dispatch, eof, fail, preceded, repeat, repeat_till, separated_pair, terminated,
 };
-use winnow::error::{ContextError, ErrMode, ParseError, StrContext};
+use winnow::error::{ContextError, ErrMode, ParseError, StrContext, StrContextValue};
 use winnow::stream::AsChar;
 use winnow::token::{take, take_while};
 use winnow::{ModalResult, Parser};
@@ -38,16 +38,18 @@ impl<'a> TryFrom<&mut &'a str> for Trace<'a> {
     type Error = TraceParseError<'a>;
 
     fn try_from(input: &mut &'a str) -> Result<Self, Self::Error> {
-        let (functions_list, main_block): (Vec<(&'a str, Function<'a>)>, Vec<Op<'a>>) =
-            (repeat(0.., function), block)
-                .parse(input)
-                .map_err(TraceParseError::ParseError)?;
+        let (functions_list, main_block): (Vec<(&'a str, Function<'a>)>, Vec<Op<'a>>) = (
+            repeat(0.., function).context(StrContext::Label("function definitions")),
+            preceded(("main", multispace0), block).context(StrContext::Label("main block")),
+        )
+            .parse(input)
+            .map_err(TraceParseError::ParseError)?;
 
         let mut functions = HashMap::new();
         for (function_name, function) in functions_list {
             if functions.contains_key(function_name) {
                 return Err(TraceParseError::SyntaxError(format!(
-                    "function with name '{function_name}' defined multiple times"
+                    "function '{function_name}()' defined multiple times"
                 )));
             }
             functions.insert(function_name, function);
@@ -59,7 +61,7 @@ impl<'a> TryFrom<&mut &'a str> for Trace<'a> {
                 Op::FunctionCall { function_name } => {
                     if !functions.contains_key(function_name) {
                         return Err(TraceParseError::SyntaxError(format!(
-                            "unknown function {function_name}"
+                            "unknown function '{function_name}()'"
                         )));
                     }
                 }
@@ -108,19 +110,20 @@ impl<'a> IntoIterator for Trace<'a> {
                     }
                 }
                 Op::Switch { cases } => {
-                    let random_float: f32 = rng.sample(rand::distr::StandardUniform);
-
-                    let mut probabilities: Vec<(usize, f32)> = cases
+                    let mut weights: Vec<(usize, usize)> = cases
                         .iter()
                         .enumerate()
-                        .map(|(i, case)| (i, case.probability))
+                        .map(|(i, case)| (i, case.weight))
                         .collect();
-                    probabilities.sort_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap());
+                    weights.sort_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap());
 
-                    let mut sum = 0.0;
-                    for (i, probability) in probabilities {
-                        sum += probability;
-                        if sum >= random_float {
+                    let total_weights = weights.iter().map(|(_, weight)| weight).sum();
+                    let random = rng.random_range(0..=total_weights);
+
+                    let mut sum = 0;
+                    for (i, weight) in weights {
+                        sum += weight;
+                        if sum >= random {
                             queue.extend(cases.get(i).unwrap().block.iter().rev());
                             break;
                         }
@@ -149,43 +152,66 @@ pub enum Op<'a> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SwitchCase<'a> {
-    probability: f32,
+    weight: usize,
     block: Vec<Op<'a>>,
 }
 
 fn function<'a>(input: &mut &'a str) -> ModalResult<(&'a str, Function<'a>)> {
-    preceded(
-        (multispace0, "fn", space0),
-        separated_pair(function_name, "()", block),
+    _ = (multispace0, "fn", space0)
+        .context(StrContext::Label("function start"))
+        .parse_next(input)?;
+
+    separated_pair(
+        function_name,
+        "()".context(StrContext::Label("function brackets")),
+        block.context(StrContext::Label("function block")),
     )
     .parse_next(input)
+    .map_err(|e| e.cut())
     .map(|(function_name, block)| (function_name, Function { block }))
 }
 
 fn function_name<'a>(input: &mut &'a str) -> ModalResult<&'a str> {
     if input.chars().next().is_some_and(|c| c.is_alpha()) {
-        (alphanumeric1).parse_next(input)
+        alphanumeric1
+            .context(StrContext::Label("function name"))
+            .context(StrContext::Expected(StrContextValue::Description(
+                "a function name consisting of ASCII characters (a-Z) and numbers (0-9)",
+            )))
+            .parse_next(input)
     } else {
-        fail.parse_next(input)
+        fail.context(StrContext::Label("function name"))
+            .context(StrContext::Expected(StrContextValue::Description(
+                "a function name starting with an ASCII characters (a-Z)",
+            )))
+            .parse_next(input)
     }
+    .map_err(ErrMode::Cut)
 }
 
 fn block<'a>(input: &mut &'a str) -> ModalResult<Vec<Op<'a>>> {
     delimited(
-        (multispace0, '{'),
-        repeat_till(0.., statement, (multispace0, '}')).context(StrContext::Label("block end")),
+        (multispace0, '{').context(StrContext::Label("block start")),
+        repeat_till(
+            1..,
+            op,
+            (multispace0, '}').context(StrContext::Label("block end")),
+        ),
         end,
     )
     .parse_next(input)
-    .map(|(statements, _)| statements)
+    .map(|(op, _)| op)
+    .map_err(|e| e.cut())
 }
 
-fn statement<'a>(input: &mut &'a str) -> ModalResult<Op<'a>> {
+fn op<'a>(input: &mut &'a str) -> ModalResult<Op<'a>> {
     // important: try 'range' before 'address' because of ambiguity
     preceded(
         multispace0,
         alt((range, address, function_call, looop, switch)),
     )
+    .context(StrContext::Label("op"))
+    .context(StrContext::Expected(StrContextValue::Description("address ( 0x00 ), range( 0x00..0x00 ), function call ( a() ), switch ( switch: ... endswitch ), loop ( loop(1) {} )")))
     .parse_next(input)
 }
 
@@ -198,6 +224,7 @@ fn address<'a>(input: &mut &'a str) -> ModalResult<Op<'a>> {
 
 fn range<'a>(input: &mut &'a str) -> ModalResult<Op<'a>> {
     terminated(separated_pair(integer, "..", integer), end)
+        .context(StrContext::Label("range"))
         .parse_next(input)
         .map(|(addr_start, addr_end)| Op::Range {
             addr_start,
@@ -207,45 +234,52 @@ fn range<'a>(input: &mut &'a str) -> ModalResult<Op<'a>> {
 
 fn function_call<'a>(input: &mut &'a str) -> ModalResult<Op<'a>> {
     terminated(function_name, ("()", end))
+        .context(StrContext::Label("function call"))
         .parse_next(input)
         .map(|function_name| Op::FunctionCall { function_name })
+        .map_err(|e| e.backtrack())
 }
 
 fn looop<'a>(input: &mut &'a str) -> ModalResult<Op<'a>> {
-    preceded(
-        "loop",
-        (
-            delimited((space0, '(', space0), integer, (space0, ')')),
-            block,
-        ),
+    _ = "loop".parse_next(input)?;
+
+    (
+        delimited((space0, '(', space0), integer, (space0, ')'))
+            .context(StrContext::Label("loop count")),
+        block,
     )
-    .parse_next(input)
-    .map(|(count, block)| Op::Loop { count, block })
+        .context(StrContext::Label("loop"))
+        .parse_next(input)
+        .map(|(count, block)| Op::Loop { count, block })
+        .map_err(|e| e.cut())
 }
 
 fn switch<'a>(input: &mut &'a str) -> ModalResult<Op<'a>> {
-    let (cases, _): (Vec<SwitchCase<'a>>, _) = delimited(
-        ("switch:", end),
-        repeat_till(1.., switch_case, (multispace0, "endswitch")),
+    _ = ("switch:", end)
+        .context(StrContext::Label("switch start"))
+        .parse_next(input)?;
+
+    terminated(
+        repeat_till(
+            1..,
+            switch_case,
+            (multispace0, "endswitch").context(StrContext::Label("switch end")),
+        ),
         end,
     )
-    .parse_next(input)?;
-
-    if (0.0..=1.0).contains(&cases.iter().fold(0.0, |sum, case| sum + case.probability)) {
-        Ok(Op::Switch { cases })
-    } else {
-        Err(ErrMode::Backtrack(ContextError::new()))
-    }
+    .parse_next(input)
+    .map(|(cases, _)| Op::Switch { cases })
 }
 
 fn switch_case<'a>(input: &mut &'a str) -> ModalResult<SwitchCase<'a>> {
     separated_pair(
-        delimited((space0, '(', space0), float, (space0, ')', space0)),
+        delimited((space0, '(', space0), integer, (space0, ')', space0)),
         (space0, ':', space0),
         block,
     )
+    .context(StrContext::Label("switch case"))
     .parse_next(input)
-    .map(|(probability, block)| SwitchCase { probability, block })
+    .map(|(weight, block)| SwitchCase { weight, block })
 }
 
 fn integer(input: &mut &str) -> ModalResult<usize> {
@@ -266,7 +300,9 @@ fn decimal_integer(input: &mut &str) -> ModalResult<usize> {
 }
 
 fn end<'a>(input: &mut &'a str) -> ModalResult<(&'a str, &'a str, &'a str)> {
-    (space0, alt((line_ending, eof)), multispace0).parse_next(input)
+    (space0, alt((line_ending, eof)), multispace0)
+        .context(StrContext::Label("newline"))
+        .parse_next(input)
 }
 
 #[cfg(test)]
@@ -282,7 +318,7 @@ mod test {
                 0x00
             }
 
-            fn abc() {
+            fn abcd() {
                 0x00
             }
 
@@ -290,18 +326,18 @@ mod test {
                 0x00
             }
 
-            {
+            main {
                 0x00
                 0x00..0x20
                 abc()
 
                 switch:
-                    (0.5): {
+                    (1): {
                         loop(10) {
                             0x05..0x06
                         }
                     }
-                    (0.5): {
+                    (1): {
                         0x03..0x04
                     }
                 endswitch
