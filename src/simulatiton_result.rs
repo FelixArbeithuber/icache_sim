@@ -57,7 +57,7 @@ impl SimulationResult {
 
         for (address, cache_hit) in self.data.iter() {
             stdout
-                .write_fmt(format_args!("{address:#X} ({cache_hit})\n"))
+                .write_fmt(format_args!("{address:#X} {cache_hit}\n"))
                 .unwrap();
         }
         stdout.write(b"\n").unwrap();
@@ -67,14 +67,23 @@ impl SimulationResult {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum CacheHit {
     Hit,
-    Miss,
+    Miss { prev: Option<usize> },
 }
 
 impl std::fmt::Display for CacheHit {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CacheHit::Hit => f.write_str("Hit"),
-            CacheHit::Miss => f.write_str("Miss"),
+            CacheHit::Miss { prev } => {
+                match prev {
+                    Some(prev) => f.write_fmt(format_args!("Miss prev={prev:#X}")),
+                    None => f.write_str("Miss"),
+                }
+                // let prev = prev
+                //     .map(|addr| format!("{addr:#X}"))
+                //     .unwrap_or(String::new());
+                // f.write_fmt(format_args!("Miss, prev {prev}"))
+            }
         }
     }
 }

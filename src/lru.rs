@@ -70,7 +70,7 @@ impl<const SETS: usize, const LINES: usize, const LINE_SIZE: usize>
             simulation_result.data.push((address, cache_hit));
             match cache_hit {
                 CacheHit::Hit => simulation_result.hit_count += 1,
-                CacheHit::Miss => simulation_result.miss_count += 1,
+                CacheHit::Miss { .. } => simulation_result.miss_count += 1,
             }
         }
 
@@ -126,8 +126,11 @@ impl<const LINES: usize> CacheSet<LINES> {
             None => {
                 let lru = self.lru.pop_front().unwrap();
                 self.lru.push_back(lru);
+
+                let prev = self.lines[lru].tag;
                 self.lines[lru] = CacheLine { tag: Some(tag) };
-                CacheHit::Miss
+
+                CacheHit::Miss { prev }
             }
         }
     }

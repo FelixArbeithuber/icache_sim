@@ -2,9 +2,9 @@ use std::collections::HashMap;
 
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use winnow::ascii::{alphanumeric1, line_ending, multispace0, space0};
+use winnow::ascii::{alphanumeric1, line_ending, multispace0, space0, till_line_ending};
 use winnow::combinator::{
-    alt, cut_err, delimited, eof, fail, peek, preceded, repeat, repeat_till, separated_pair,
+    alt, cut_err, delimited, eof, fail, opt, peek, preceded, repeat, repeat_till, separated_pair,
     terminated,
 };
 use winnow::error::{ContextError, ErrMode, ParseError, StrContext, StrContextValue};
@@ -41,7 +41,7 @@ impl<'a> TryFrom<&mut &'a str> for Trace<'a> {
     fn try_from(input: &mut &'a str) -> Result<Self, Self::Error> {
         let (functions_list, main_block): (Vec<(&'a str, Function<'a>)>, Vec<Op<'a>>) = (
             repeat(0.., function).context(StrContext::Label("function definitions")),
-            preceded(("main", multispace0), block).context(StrContext::Label("main block")),
+            preceded(("main", multispace), block).context(StrContext::Label("main block")),
         )
             .parse(input)
             .map_err(TraceParseError::ParseError)?;
@@ -159,7 +159,7 @@ pub struct SwitchCase<'a> {
 
 fn function<'a>(input: &mut &'a str) -> ModalResult<(&'a str, Function<'a>)> {
     preceded(
-        (multispace0, "fn", space0),
+        (multispace, "fn", space),
         cut_err(separated_pair(
             function_name,
             "()".context(StrContext::Label("function brackets")),
@@ -191,12 +191,12 @@ fn function_name<'a>(input: &mut &'a str) -> ModalResult<&'a str> {
 
 fn block<'a>(input: &mut &'a str) -> ModalResult<Vec<Op<'a>>> {
     delimited(
-        (multispace0, '{').context(StrContext::Label("block start")),
+        (multispace, '{').context(StrContext::Label("block start")),
         cut_err(
             repeat_till(
                 1..,
                 op,
-                (multispace0, '}').context(StrContext::Label("block end")),
+                (multispace, '}').context(StrContext::Label("block end")),
             )
             .map(|(op, _)| op),
         ),
@@ -208,7 +208,7 @@ fn block<'a>(input: &mut &'a str) -> ModalResult<Vec<Op<'a>>> {
 fn op<'a>(input: &mut &'a str) -> ModalResult<Op<'a>> {
     // important: try 'range' before 'address' because of ambiguity
     preceded(
-        multispace0,
+        multispace,
         alt((range, address, function_call, looop, switch)),
     )
     .context(StrContext::Label("statement"))
@@ -259,12 +259,8 @@ fn looop<'a>(input: &mut &'a str) -> ModalResult<Op<'a>> {
     preceded(
         "loop",
         cut_err((
-            delimited(
-                (space0, '(', space0),
-                decimal_integer,
-                (space0, ')', space0),
-            )
-            .context(StrContext::Label("loop count")),
+            delimited((space, '(', space), decimal_integer, (space, ')', space))
+                .context(StrContext::Label("loop count")),
             block,
         ))
         .map(|(count, block)| Op::Loop { count, block }),
@@ -279,7 +275,7 @@ fn switch<'a>(input: &mut &'a str) -> ModalResult<Op<'a>> {
             repeat_till(
                 1..,
                 switch_case,
-                (multispace0, "endswitch").context(StrContext::Label("switch end")),
+                (multispace, "endswitch").context(StrContext::Label("switch end")),
             )
             .map(|(cases, _)| Op::Switch { cases }),
             end,
@@ -290,12 +286,8 @@ fn switch<'a>(input: &mut &'a str) -> ModalResult<Op<'a>> {
 
 fn switch_case<'a>(input: &mut &'a str) -> ModalResult<SwitchCase<'a>> {
     separated_pair(
-        delimited(
-            (space0, '(', space0),
-            decimal_integer,
-            (space0, ')', space0),
-        ),
-        (space0, ':', space0),
+        delimited((space, '(', space), decimal_integer, (space, ')', space)),
+        (space, ':', space),
         block,
     )
     .map(|(weight, block)| SwitchCase { weight, block })
@@ -334,8 +326,23 @@ fn decimal_integer(input: &mut &str) -> ModalResult<usize> {
         .parse_next(input)
 }
 
-fn end<'a>(input: &mut &'a str) -> ModalResult<(&'a str, &'a str, &'a str)> {
-    (space0, alt((line_ending, eof)), multispace0)
+fn end(input: &mut &str) -> ModalResult<()> {
+    (space, alt((line_ending, eof)), multispace)
+        .void()
+        .context(StrContext::Label("newline"))
+        .parse_next(input)
+}
+
+fn space(input: &mut &str) -> ModalResult<()> {
+    (space0, opt(("//", till_line_ending)), space0)
+        .void()
+        .context(StrContext::Label("newline"))
+        .parse_next(input)
+}
+
+fn multispace<'a>(input: &mut &str) -> ModalResult<()> {
+    (multispace0, opt(("//", till_line_ending)), multispace0)
+        .void()
         .context(StrContext::Label("newline"))
         .parse_next(input)
 }

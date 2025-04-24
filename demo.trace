@@ -1,3 +1,6 @@
+// this is a comment
+
+// this is a function definition
 fn b() {
     0x00
 }
@@ -11,13 +14,17 @@ fn c() {
     0x00
 }
 
+// the main block marks the start of the execution
 main {
-    0x00
-    0x00..0x20
-    a()
+    0x00        // access a single address in memory
+    0x00..0x20  // access addresses [0x00, 0x20) (exclusive upper bound)
+    a() // function call
 
+    // a switch statement
     switch:
+        // the label is the probability weight of this case
         (1): {
+            // the block can be anything
             loop(3) {
                 0x05..0x06
             }
@@ -27,6 +34,7 @@ main {
         }
     endswitch
 
+    // a loop with a fixed iteration count
     loop (2) {
         0x05..0x07
     }
