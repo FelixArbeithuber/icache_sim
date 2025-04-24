@@ -3,6 +3,7 @@ use std::io::{Write, stdout};
 
 use lru::{CacheHit, MainMemory};
 
+mod access_trace;
 mod lru;
 
 fn main() {
