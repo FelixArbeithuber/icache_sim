@@ -1,0 +1,57 @@
+* {
+    box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    width: 100vw;
+    height: 100vh;
+}
+
+h1 {
+    text-align: center;
+    margin-top: 0;
+}
+
+#content {
+    width: 85%;
+    height: 85%;
+    margin-inline: auto;
+}
+
+#controls {
+    display: flex;
+    flex-wrap: wrap;
+    margin-bottom: 5px;
+}
+
+#controls-separator {
+    flex-grow: 1;
+}
+
+#main {
+    display: flex;
+}
+
+#main,
+#editor,
+#output,
+.cm-wrap,
+.cm-editor {
+    height: 100%;
+}
+.cm-scroller {
+    overflow: auto;
+}
+
+#editor,
+#output {
+    width: 50%;
+    flex-basis: 50%;
+    border: 1px solid black;
+    border-collapse: collapse;
+}

@@ -1,0 +1,21 @@
+{
+    "name": "web",
+    "module": "index.ts",
+    "type": "module",
+    "private": true,
+    "scripts": {
+        "clean": "rm -R dist lru_sim node_modules || true",
+        "prebundle": "bun clean ; wasm-pack build --target web --release --out-dir web/lru_sim && bun install",
+        "bundle": "bun build index.html --outdir=dist && cp lru_sim/lru_sim_bg.wasm dist"
+    },
+    "devDependencies": {
+        "@types/bun": "latest"
+    },
+    "peerDependencies": {
+        "typescript": "^5"
+    },
+    "dependencies": {
+        "lru_sim": "file:lru_sim",
+        "codemirror": "^6.0.1"
+    }
+}
