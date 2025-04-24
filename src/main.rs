@@ -10,7 +10,7 @@ fn main() {
     let mut lru_cache = main_memory.create_cache::<8, 4>();
 
     let mut stdout = stdout();
-    let Some(ref filename) = std::env::args().skip(1).next() else {
+    let Some(ref filename) = std::env::args().nth(1) else {
         println!("no file given");
         return;
     };
@@ -28,7 +28,7 @@ fn main() {
             continue;
         }
 
-        let (addr_str, count_str) = addr_str.split_once(":").unwrap_or_else(|| (addr_str, "1"));
+        let (addr_str, count_str) = addr_str.split_once(":").unwrap_or((addr_str, "1"));
 
         let Ok(address) = usize::from_str_radix(&addr_str[2..], 16) else {
             stdout
@@ -37,7 +37,7 @@ fn main() {
             return;
         };
 
-        let Ok(count) = usize::from_str_radix(count_str, 10) else {
+        let Ok(count) = count_str.parse::<usize>() else {
             stdout
                 .write_fmt(format_args!("Invalid address: {addr_str}"))
                 .unwrap();

@@ -84,27 +84,25 @@ impl<'mm, const SIZE: usize, const SETS: usize, const LINES: usize, const LINE_S
             .enumerate()
             .find(|(_, line)| line.as_ref().is_some_and(|l| l.set_address == set_addr));
 
-        if let Some((idx, cache_line)) = cache_line {
-            if let Some(cache_line) = cache_line {
-                set.meta.remove(
-                    set.meta
-                        .iter()
-                        .enumerate()
-                        .find_map(|(i1, &i2)| if i2 == idx { Some(i1) } else { None })
-                        .unwrap(),
-                );
-                set.meta.push_front(idx);
-                return (cache_line.line.clone(), CacheHit::Hit);
-            }
+        if let Some((idx, Some(cache_line))) = cache_line {
+            set.meta.remove(
+                set.meta
+                    .iter()
+                    .enumerate()
+                    .find_map(|(i1, &i2)| if i2 == idx { Some(i1) } else { None })
+                    .unwrap(),
+            );
+            set.meta.push_front(idx);
+            return (cache_line.line, CacheHit::Hit);
         }
 
         let line = self.main_memory.get(address);
 
         let lru = set.meta.pop_back().unwrap();
         set.meta.push_front(lru);
-        set.lines[lru] = Some(CacheLine::new(set_addr, line.clone()));
+        set.lines[lru] = Some(CacheLine::new(set_addr, line));
 
-        return (line, CacheHit::Miss);
+        (line, CacheHit::Miss)
     }
 }
 
