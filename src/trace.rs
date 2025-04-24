@@ -29,12 +29,12 @@ impl std::fmt::Display for TraceParseError<'_> {
 impl std::error::Error for TraceParseError<'_> {}
 
 #[derive(Debug)]
-pub struct AccessTrace<'a> {
+pub struct Trace<'a> {
     functions: HashMap<&'a str, Function<'a>>,
     main_block: Vec<Op<'a>>,
 }
 
-impl<'a> TryFrom<&mut &'a str> for AccessTrace<'a> {
+impl<'a> TryFrom<&mut &'a str> for Trace<'a> {
     type Error = TraceParseError<'a>;
 
     fn try_from(input: &mut &'a str) -> Result<Self, Self::Error> {
@@ -82,7 +82,7 @@ impl<'a> TryFrom<&mut &'a str> for AccessTrace<'a> {
     }
 }
 
-impl<'a> IntoIterator for AccessTrace<'a> {
+impl<'a> IntoIterator for Trace<'a> {
     type Item = usize;
     type IntoIter = std::vec::IntoIter<Self::Item>;
 
@@ -138,6 +138,21 @@ struct Function<'a> {
     block: Vec<Op<'a>>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum Op<'a> {
+    Address { addr: usize },
+    Range { addr_start: usize, addr_end: usize },
+    FunctionCall { function_name: &'a str },
+    Loop { count: usize, block: Vec<Op<'a>> },
+    Switch { cases: Vec<SwitchCase<'a>> },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SwitchCase<'a> {
+    probability: f32,
+    block: Vec<Op<'a>>,
+}
+
 fn function<'a>(input: &mut &'a str) -> ModalResult<(&'a str, Function<'a>)> {
     preceded(
         (multispace0, "fn", space0),
@@ -153,25 +168,6 @@ fn function_name<'a>(input: &mut &'a str) -> ModalResult<&'a str> {
     } else {
         fail.parse_next(input)
     }
-}
-
-fn end<'a>(input: &mut &'a str) -> ModalResult<(&'a str, &'a str, &'a str)> {
-    (space0, alt((line_ending, eof)), multispace0).parse_next(input)
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Op<'a> {
-    Address { addr: usize },
-    Range { addr_start: usize, addr_end: usize },
-    FunctionCall { function_name: &'a str },
-    Loop { count: usize, block: Vec<Op<'a>> },
-    Switch { cases: Vec<SwitchCase<'a>> },
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct SwitchCase<'a> {
-    probability: f32,
-    block: Vec<Op<'a>>,
 }
 
 fn block<'a>(input: &mut &'a str) -> ModalResult<Vec<Op<'a>>> {
@@ -269,6 +265,10 @@ fn decimal_integer(input: &mut &str) -> ModalResult<usize> {
         .parse_next(input)
 }
 
+fn end<'a>(input: &mut &'a str) -> ModalResult<(&'a str, &'a str, &'a str)> {
+    (space0, alt((line_ending, eof)), multispace0).parse_next(input)
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -313,6 +313,6 @@ mod test {
             "#,
         );
 
-        println!("{:?}", AccessTrace::try_from(&mut trace.as_str()).unwrap());
+        println!("{:?}", Trace::try_from(&mut trace.as_str()).unwrap());
     }
 }

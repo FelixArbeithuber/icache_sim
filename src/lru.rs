@@ -1,143 +1,139 @@
-use std::{array, collections::VecDeque};
+use std::{array, collections::VecDeque, path::Path};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CacheHit {
-    Hit,
-    Miss,
-}
+use crate::simulatiton_result::{CacheHit, SimulationResult};
+use crate::trace::Trace;
 
-pub struct MainMemory<const SIZE: usize, const LINE_SIZE: usize> {
-    data: [u8; SIZE],
-}
-
-impl<const SIZE: usize, const LINE_SIZE: usize> MainMemory<SIZE, LINE_SIZE> {
-    pub fn new(data: [u8; SIZE]) -> Self {
-        const {
-            assert!(
-                is_power_of_two(SIZE),
-                "SIZE of MainMemory is not a power of two"
-            );
-            assert!(
-                is_power_of_two(LINE_SIZE),
-                "LINE_SIZE of MainMemory is not a power of two"
-            );
-        }
-
-        Self { data }
-    }
-
-    pub fn create_cache<const SETS: usize, const LINES: usize>(
-        &self,
-    ) -> LruCache<SIZE, SETS, LINES, LINE_SIZE> {
-        const {
-            assert!(
-                is_power_of_two(SETS),
-                "SIZE of MainMemory is not a power of two"
-            );
-            assert!(
-                is_power_of_two(LINES),
-                "SIZE of MainMemory is not a power of two"
-            );
-            assert!(
-                LINE_SIZE * LINES * SETS <= SIZE,
-                "the LruCache can't be bigger than the MainMemory"
-            )
-        }
-
-        LruCache::new(self)
-    }
-
-    fn get(&self, address: usize) -> [u8; LINE_SIZE] {
-        let addr = address / LINE_SIZE * LINE_SIZE;
-        array::from_fn(|i| self.data.get(addr + i).copied().unwrap_or(0))
-    }
-}
-
-pub struct LruCache<
-    'mm,
-    const SIZE: usize,
-    const SETS: usize,
-    const LINES: usize,
-    const LINE_SIZE: usize,
-> {
-    main_memory: &'mm MainMemory<SIZE, LINE_SIZE>,
+/// ## const generics
+/// - `SETS`: number of sets in case
+/// - `LINES`: number of cache-lines in a set
+/// - `LINE_SIZE`: number of bytes in a cache-line
+#[derive(Debug)]
+pub struct LruCache<const SETS: usize, const LINES: usize, const LINE_SIZE: usize = 1> {
+    offset_width: usize,
+    set_index_width: usize,
     sets: [CacheSet<LINES, LINE_SIZE>; SETS],
 }
 
-impl<'mm, const SIZE: usize, const SETS: usize, const LINES: usize, const LINE_SIZE: usize>
-    LruCache<'mm, SIZE, SETS, LINES, LINE_SIZE>
+impl<const SETS: usize, const LINES: usize, const LINE_SIZE: usize>
+    LruCache<SETS, LINES, LINE_SIZE>
 {
-    fn new(main_memory: &'mm MainMemory<SIZE, LINE_SIZE>) -> Self {
+    pub fn new() -> Self {
+        const {
+            assert!(
+                SETS.count_ones() == 1,
+                "SETS of LruCache is not a power of two"
+            );
+            assert!(
+                LINES.count_ones() == 1,
+                "LINES of LruCache is not a power of two"
+            );
+            assert!(
+                LINE_SIZE.count_ones() == 1,
+                "LINE_SIZE of LruCache is not a power of two"
+            );
+            assert!(
+                (SETS.ilog2() + LINES.ilog2() + LINE_SIZE.ilog2()) as usize
+                    <= std::mem::size_of::<usize>() * 8,
+                "not enough bits in adress to index all elements in the cache"
+            );
+        }
+
+        let offset_width = (LINE_SIZE).ilog2() as usize;
+        let set_index_width = offset_width + LINES.ilog2() as usize;
+
         Self {
-            main_memory,
+            offset_width,
+            set_index_width,
             sets: array::from_fn(|_| CacheSet::new()),
         }
     }
 
-    pub fn get(&mut self, address: usize) -> (u8, CacheHit) {
-        let set_addr = address / LINE_SIZE * LINE_SIZE;
-        let set = &mut self.sets[address / LINE_SIZE % LINES];
+    pub fn simulate(&mut self, file: impl AsRef<Path>) -> Result<SimulationResult, String> {
+        let Ok(file_data) = std::fs::read_to_string(
+            std::env::current_dir()
+                .map_err(|_| "unable to get current directory")?
+                .join(file),
+        ) else {
+            return Err("unable to read file".into());
+        };
 
-        let cache_line = set
-            .lines
-            .iter()
-            .enumerate()
-            .find(|(_, line)| line.as_ref().is_some_and(|l| l.set_address == set_addr));
+        let access_trace = match Trace::try_from(&mut file_data.as_str()) {
+            Ok(access_trace) => access_trace,
+            Err(e) => {
+                return Err(format!("failed to parse access trace file: {e}"));
+            }
+        };
 
-        if let Some((idx, Some(cache_line))) = cache_line {
-            set.meta.remove(
-                set.meta
-                    .iter()
-                    .enumerate()
-                    .find_map(|(i1, &i2)| if i2 == idx { Some(i1) } else { None })
-                    .unwrap(),
-            );
-            set.meta.push_front(idx);
-            return (cache_line.line[address % LINE_SIZE], CacheHit::Hit);
+        let mut simulation_result = SimulationResult::new();
+        for address in access_trace.into_iter() {
+            let cache_hit = self.get(address);
+            simulation_result.data.push((address, cache_hit));
+            match cache_hit {
+                CacheHit::Hit => simulation_result.hit_count += 1,
+                CacheHit::Miss => simulation_result.miss_count += 1,
+            }
         }
 
-        let line = self.main_memory.get(address);
+        Ok(simulation_result)
+    }
 
-        let lru = set.meta.pop_back().unwrap();
-        set.meta.push_front(lru);
-        set.lines[lru] = Some(CacheLine::new(set_addr, line));
+    pub fn get(&mut self, address: usize) -> CacheHit {
+        let set_index = (address >> self.offset_width) & (SETS - 1);
+        let tag = address >> self.set_index_width;
 
-        (line[address % LINE_SIZE], CacheHit::Miss)
+        self.sets[set_index].get(tag)
     }
 }
 
 #[derive(Debug, Clone)]
 struct CacheSet<const LINES: usize, const LINE_SIZE: usize> {
-    lines: [Option<CacheLine<LINE_SIZE>>; LINES],
-    meta: VecDeque<usize>,
+    lines: [CacheLine; LINES],
+    lru: VecDeque<usize>,
 }
 
 impl<const LINES: usize, const LINE_SIZE: usize> CacheSet<LINES, LINE_SIZE> {
     fn new() -> Self {
-        let mut meta = VecDeque::with_capacity(LINES);
-        for i in (0..LINES).rev() {
-            meta.push_back(i);
-        }
-
         Self {
-            lines: array::from_fn(|_| None),
-            meta,
+            lines: [CacheLine { tag: None }; LINES],
+            lru: VecDeque::from_iter(0..LINES),
+        }
+    }
+
+    fn get(&mut self, tag: usize) -> CacheHit {
+        // linear search for cache_line with tag
+        let cache_line = self
+            .lines
+            .iter()
+            .enumerate()
+            .find(|(_, line)| line.tag == Some(tag));
+
+        match cache_line {
+            // Cache-Hit: set cache-line as the most recently used
+            Some((line_idx, _)) => {
+                let (meta_idx, _) = self
+                    .lru
+                    .iter()
+                    .enumerate()
+                    .find(|(_, idx)| **idx == line_idx)
+                    .unwrap();
+
+                self.lru.remove(meta_idx);
+                self.lru.push_back(line_idx);
+
+                CacheHit::Hit
+            }
+            // Cache-Miss: replace least recently used cache-line and set it as the most recently used
+            None => {
+                let lru = self.lru.pop_front().unwrap();
+                self.lru.push_back(lru);
+                self.lines[lru] = CacheLine { tag: Some(tag) };
+                CacheHit::Miss
+            }
         }
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct CacheLine<const LINE_SIZE: usize> {
-    set_address: usize,
-    line: [u8; LINE_SIZE],
-}
-
-impl<const LINE_SIZE: usize> CacheLine<LINE_SIZE> {
-    fn new(set_address: usize, line: [u8; LINE_SIZE]) -> Self {
-        Self { set_address, line }
-    }
-}
-
-const fn is_power_of_two(i: usize) -> bool {
-    i > 1 && i.count_ones() == 1
+#[derive(Debug, Copy, Clone)]
+pub struct CacheLine {
+    tag: Option<usize>,
 }
