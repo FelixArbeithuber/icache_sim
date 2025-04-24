@@ -1,4 +1,4 @@
-use std::{array, collections::VecDeque};
+use std::array;
 
 use crate::simulatiton::CacheHit;
 
@@ -54,7 +54,7 @@ impl<const SETS: usize, const WAYS: usize, const LINE_SIZE: usize> LruCache<SETS
         let set_index = (address >> self.offset_width) & self.set_index_mask;
         let tag = address >> (self.set_index_width + self.offset_width);
 
-        self.sets[set_index].get(address, tag)
+        unsafe { self.sets.get_unchecked_mut(set_index) }.get(address, tag)
     }
 }
 
@@ -67,9 +67,9 @@ impl<const SETS: usize, const WAYS: usize, const LINE_SIZE: usize> Default
 }
 
 #[derive(Debug, Clone)]
-struct CacheSet<const LINES: usize> {
-    lines: [CacheLine; LINES],
-    lru: VecDeque<usize>,
+struct CacheSet<const WAYS: usize> {
+    lines: [CacheLine; WAYS],
+    lru: [usize; WAYS],
 }
 
 impl<const LINES: usize> CacheSet<LINES> {
@@ -79,7 +79,7 @@ impl<const LINES: usize> CacheSet<LINES> {
                 address: None,
                 tag: None,
             }; LINES],
-            lru: VecDeque::from_iter(0..LINES),
+            lru: array::from_fn(|i| i),
         }
     }
 
@@ -89,30 +89,36 @@ impl<const LINES: usize> CacheSet<LINES> {
             .lines
             .iter()
             .enumerate()
-            .find(|(_, line)| line.tag == Some(tag));
+            .find(|(_, line)| line.tag == Some(tag))
+            .map(|(line_idx, _)| line_idx);
 
         match cache_line {
             // Cache-Hit: set cache-line as the most recently used
-            Some((line_idx, _)) => {
-                let (meta_idx, _) = self
+            Some(line_idx) => {
+                let meta_idx = self
                     .lru
                     .iter()
                     .enumerate()
                     .find(|(_, idx)| **idx == line_idx)
+                    .map(|(meta_idx, _)| meta_idx)
                     .unwrap();
 
-                self.lru.remove(meta_idx);
-                self.lru.push_back(line_idx);
+                let tmp = unsafe { *self.lru.get_unchecked(meta_idx) };
+                for i in (1..=meta_idx).rev() {
+                    unsafe { *self.lru.get_unchecked_mut(i) = *self.lru.get_unchecked(i - 1) };
+                }
+                unsafe { *self.lru.get_unchecked_mut(0) = tmp };
 
                 CacheHit::Hit
             }
             // Cache-Miss: replace least recently used cache-line and set it as the most recently used
             None => {
-                let lru = self.lru.pop_front().unwrap();
-                self.lru.push_back(lru);
+                self.lru.rotate_right(1);
+                let lru = unsafe { *self.lru.get_unchecked(0) };
 
-                let prev = self.lines[lru].address;
-                self.lines[lru] = CacheLine {
+                let lru_line = unsafe { self.lines.get_unchecked_mut(lru) };
+                let prev = lru_line.address;
+                *lru_line = CacheLine {
                     address: Some(address),
                     tag: Some(tag),
                 };

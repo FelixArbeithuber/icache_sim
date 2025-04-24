@@ -5,7 +5,6 @@ use crate::{lru::LruCache, trace::TraceFile};
 #[derive(Debug, Clone, Default)]
 pub struct Simulation<const CLOCK_SPEED_MHZ: u32, const CYCLES_HIT: u32, const CYCLES_MISS: u32> {
     name: String,
-    data: Vec<(usize, CacheHit)>,
     hit_count: u32,
     miss_count: u32,
 }
@@ -43,13 +42,11 @@ impl<const CLOCK_SPEED_MHZ: u32, const CYCLES_HIT: u32, const CYCLES_MISS: u32>
                 trace.into_iter().fold(
                     Simulation {
                         name,
-                        ..Default::default()
+                        hit_count: 0,
+                        miss_count: 0,
                     },
                     |mut simulation_result, address| {
-                        let cache_hit = lru_cache.get(address);
-
-                        simulation_result.data.push((address, cache_hit));
-                        match cache_hit {
+                        match lru_cache.get(address) {
                             CacheHit::Hit => simulation_result.hit_count += 1,
                             CacheHit::Miss { .. } => simulation_result.miss_count += 1,
                         }
@@ -95,18 +92,6 @@ impl<const CLOCK_SPEED_MHZ: u32, const CYCLES_HIT: u32, const CYCLES_MISS: u32>
         } else {
             println!("Total time: {:.3}us", total_time_us);
         }
-    }
-
-    pub fn print_trace(&self) {
-        use std::io::{Write, stdout};
-
-        let mut stdout = stdout().lock();
-        for (address, cache_hit) in self.data.iter() {
-            stdout
-                .write_fmt(format_args!("{address:#X} {cache_hit}\n"))
-                .unwrap();
-        }
-        stdout.write_all(b"\n").unwrap();
     }
 
     pub fn compare(simulation_results: &[Self]) {
