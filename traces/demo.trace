@@ -1,5 +1,8 @@
 // this is a comment
 
+// the instruction size determines the step size of address ranges
+INSTRUCTION_SIZE = 1b
+
 // this is a function definition
 fn b() {
     0x00

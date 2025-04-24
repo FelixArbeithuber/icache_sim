@@ -1,7 +1,8 @@
 use lru_sim::lru::LruCache;
 
 fn main() {
-    let mut lru_cache: LruCache<16, 4, 1> = LruCache::new();
+    // https://developer.arm.com/documentation/102199/0001/Memory-System/Level-1-caches?lang=en
+    let mut lru_cache: LruCache<128, 4, 64> = LruCache::new();
 
     let Some(filename) = std::env::args().nth(1) else {
         println!("no file given");

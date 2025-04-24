@@ -1,7 +1,7 @@
 #[derive(Debug, Default)]
 pub struct SimulationResult {
     pub cache_sets: usize,
-    pub cache_lines: usize,
+    pub cache_ways: usize,
     pub line_size: usize,
 
     pub data: Vec<(usize, CacheHit)>,
@@ -10,15 +10,12 @@ pub struct SimulationResult {
 }
 
 impl SimulationResult {
-    pub fn new(cache_sets: usize, cache_lines: usize, line_size: usize) -> Self {
+    pub fn new(cache_sets: usize, cache_ways: usize, line_size: usize) -> Self {
         Self {
             cache_sets,
-            cache_lines,
+            cache_ways,
             line_size,
-
-            data: Vec::new(),
-            hit_count: 0,
-            miss_count: 0,
+            ..Default::default()
         }
     }
 
@@ -33,13 +30,13 @@ impl SimulationResult {
 
     pub fn print_cache_info(&self) {
         println!("LRU Cache:");
-        println!("\tSets: {}", self.cache_sets);
-        println!("\tLines {}", self.cache_lines);
-        println!("\tLine-Size: {}", self.line_size);
         println!(
             "\tTotal Size: {}B",
-            self.line_size * self.cache_lines * self.cache_sets
+            self.line_size * self.cache_ways * self.cache_sets
         );
+        println!("\tSets: {}", self.cache_sets);
+        println!("\tWays {}", self.cache_ways);
+        println!("\tLine-Size: {}B", self.line_size);
         println!()
     }
 
@@ -47,6 +44,7 @@ impl SimulationResult {
         println!("Hits: {}, Misses: {}", self.hit_count, self.miss_count);
         println!("Percent Hits: {:.3} %", self.percent_hit());
         println!("Percent Misses: {:.3} %", self.percent_miss());
+        // TODO
         println!()
     }
 
@@ -60,7 +58,7 @@ impl SimulationResult {
                 .write_fmt(format_args!("{address:#X} {cache_hit}\n"))
                 .unwrap();
         }
-        stdout.write(b"\n").unwrap();
+        stdout.write_all(b"\n").unwrap();
     }
 }
 

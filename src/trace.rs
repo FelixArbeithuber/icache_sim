@@ -31,6 +31,7 @@ impl std::error::Error for TraceParseError<'_> {}
 
 #[derive(Debug)]
 pub struct Trace<'a> {
+    instruction_size: usize,
     functions: HashMap<&'a str, Function<'a>>,
     main_block: Vec<Op<'a>>,
 }
@@ -39,7 +40,20 @@ impl<'a> TryFrom<&mut &'a str> for Trace<'a> {
     type Error = TraceParseError<'a>;
 
     fn try_from(input: &mut &'a str) -> Result<Self, Self::Error> {
-        let (functions_list, main_block): (Vec<(&'a str, Function<'a>)>, Vec<Op<'a>>) = (
+        let (instruction_size, functions_list, main_block): (
+            usize,
+            Vec<(&'a str, Function<'a>)>,
+            Vec<Op<'a>>,
+        ) = (
+            delimited(
+                (multispace, "INSTRUCTION_SIZE", space, '=', space),
+                decimal_integer,
+                (space, "b", end),
+            )
+            .context(StrContext::Label("instruction size"))
+            .context(StrContext::Expected(StrContextValue::Description(
+                "INSTRUCTION_SIZE = {number of bits}b",
+            ))),
             repeat(0.., function).context(StrContext::Label("function definitions")),
             preceded(("main", multispace), block).context(StrContext::Label("main block")),
         )
@@ -79,6 +93,7 @@ impl<'a> TryFrom<&mut &'a str> for Trace<'a> {
         }
 
         Ok(Self {
+            instruction_size,
             functions,
             main_block,
         })
@@ -100,7 +115,7 @@ impl<'a> IntoIterator for Trace<'a> {
                 Op::Range {
                     addr_start,
                     addr_end,
-                } => addresses.extend((*addr_start)..(*addr_end)),
+                } => addresses.extend((*addr_start..*addr_end).step_by(self.instruction_size / 8)),
                 Op::FunctionCall { function_name } => {
                     let function = self.functions.get(function_name).unwrap();
                     queue.extend(function.block.iter().rev());
@@ -340,8 +355,12 @@ fn space(input: &mut &str) -> ModalResult<()> {
         .parse_next(input)
 }
 
-fn multispace<'a>(input: &mut &str) -> ModalResult<()> {
-    (multispace0, opt(("//", till_line_ending)), multispace0)
+fn multispace(input: &mut &str) -> ModalResult<()> {
+    (
+        multispace0,
+        repeat::<_, _, (), _, _>(0.., ("//", till_line_ending, multispace0)),
+        multispace0,
+    )
         .void()
         .context(StrContext::Label("newline"))
         .parse_next(input)

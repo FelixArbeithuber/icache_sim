@@ -5,45 +5,42 @@ use crate::trace::Trace;
 
 /// ## const generics
 /// - `SETS`: number of sets in case
-/// - `LINES`: number of cache-lines in a set
+/// - `WAYS`: number of cache-lines in a set
 /// - `LINE_SIZE`: number of bytes in a cache-line
 #[derive(Debug)]
-pub struct LruCache<const SETS: usize, const LINES: usize, const LINE_SIZE: usize = 1> {
+pub struct LruCache<const SETS: usize, const WAYS: usize, const LINE_SIZE: usize = 1> {
     offset_width: usize,
     set_index_width: usize,
-    sets: [CacheSet<LINES>; SETS],
+    set_index_mask: usize,
+    sets: [CacheSet<WAYS>; SETS],
 }
 
-impl<const SETS: usize, const LINES: usize, const LINE_SIZE: usize>
-    LruCache<SETS, LINES, LINE_SIZE>
-{
+impl<const SETS: usize, const WAYS: usize, const LINE_SIZE: usize> LruCache<SETS, WAYS, LINE_SIZE> {
     pub fn new() -> Self {
+        // for e.g. 64 different sets we need to index 0..=63
+        // the number of bits required to represent that number is log2(64 - 1) + 1
+        const fn required_bits(i: usize) -> usize {
+            (i - 1).ilog2() as usize + 1
+        }
+
         const {
             assert!(
-                SETS.count_ones() == 1,
-                "SETS of LruCache is not a power of two"
-            );
-            assert!(
-                LINES.count_ones() == 1,
-                "LINES of LruCache is not a power of two"
-            );
-            assert!(
-                LINE_SIZE.count_ones() == 1,
-                "LINE_SIZE of LruCache is not a power of two"
-            );
-            assert!(
-                (SETS.ilog2() + LINES.ilog2() + LINE_SIZE.ilog2()) as usize
-                    <= std::mem::size_of::<usize>() * 8,
+                required_bits(SETS) + required_bits(LINE_SIZE) <= std::mem::size_of::<usize>() * 8,
                 "not enough bits in adress to index all elements in the cache"
             );
         }
 
-        let offset_width = (LINE_SIZE).ilog2() as usize;
-        let set_index_width = offset_width + LINES.ilog2() as usize;
+        let offset_width = required_bits(LINE_SIZE);
+        let set_index_width = required_bits(SETS);
+        let set_index_mask = !(!0usize << set_index_width);
+
+        // println!("offset_width={offset_width}, set_index_width={set_index_width}");
+        // println!("set_index_mask={set_index_mask:#b}");
 
         Self {
             offset_width,
             set_index_width,
+            set_index_mask,
             sets: array::from_fn(|_| CacheSet::new()),
         }
     }
@@ -64,7 +61,7 @@ impl<const SETS: usize, const LINES: usize, const LINE_SIZE: usize>
             }
         };
 
-        let mut simulation_result = SimulationResult::new(SETS, LINES, LINE_SIZE);
+        let mut simulation_result = SimulationResult::new(SETS, WAYS, LINE_SIZE);
         for address in access_trace.into_iter() {
             let cache_hit = self.get(address);
             simulation_result.data.push((address, cache_hit));
@@ -78,10 +75,11 @@ impl<const SETS: usize, const LINES: usize, const LINE_SIZE: usize>
     }
 
     pub fn get(&mut self, address: usize) -> CacheHit {
-        let set_index = (address >> self.offset_width) & (SETS - 1);
-        let tag = address >> self.set_index_width;
+        let set_index = (address >> self.offset_width) & self.set_index_mask;
+        let tag = address >> (self.set_index_width + self.offset_width);
+        // println!("{address:#13b}, {set_index:#13b}, {tag:#13b}");
 
-        self.sets[set_index].get(tag)
+        self.sets[set_index].get(address, tag)
     }
 }
 
@@ -94,12 +92,15 @@ struct CacheSet<const LINES: usize> {
 impl<const LINES: usize> CacheSet<LINES> {
     fn new() -> Self {
         Self {
-            lines: [CacheLine { tag: None }; LINES],
+            lines: [CacheLine {
+                address: None,
+                tag: None,
+            }; LINES],
             lru: VecDeque::from_iter(0..LINES),
         }
     }
 
-    fn get(&mut self, tag: usize) -> CacheHit {
+    fn get(&mut self, address: usize, tag: usize) -> CacheHit {
         // linear search for cache_line with tag
         let cache_line = self
             .lines
@@ -127,8 +128,11 @@ impl<const LINES: usize> CacheSet<LINES> {
                 let lru = self.lru.pop_front().unwrap();
                 self.lru.push_back(lru);
 
-                let prev = self.lines[lru].tag;
-                self.lines[lru] = CacheLine { tag: Some(tag) };
+                let prev = self.lines[lru].address;
+                self.lines[lru] = CacheLine {
+                    address: Some(address),
+                    tag: Some(tag),
+                };
 
                 CacheHit::Miss { prev }
             }
@@ -138,5 +142,6 @@ impl<const LINES: usize> CacheSet<LINES> {
 
 #[derive(Debug, Copy, Clone)]
 pub struct CacheLine {
+    address: Option<usize>,
     tag: Option<usize>,
 }
