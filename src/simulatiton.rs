@@ -74,9 +74,13 @@ impl<const CLOCK_SPEED_MHZ: u32, const CYCLES_HIT: u32, const CYCLES_MISS: u32>
 
     pub fn print_summary(&self) {
         println!("Trace: {}", self.name);
+        println!(
+            "Number of Instructions: {}",
+            self.hit_count + self.miss_count
+        );
         println!("Hits: {}, Misses: {}", self.hit_count, self.miss_count);
-        println!("Percent Hits: {:.3} %", self.percent_hit());
-        println!("Percent Misses: {:.3} %", self.percent_miss());
+        println!("Percent Hits: {:.3}%", self.percent_hit());
+        println!("Percent Misses: {:.3}%", self.percent_miss());
         println!(
             "Assuming Clock-Speed: {CLOCK_SPEED_MHZ} MHz, Cache-Hit: {CYCLES_HIT} cycles, Cache-Miss: {CYCLES_MISS} cycles"
         );
@@ -124,7 +128,10 @@ impl<const CLOCK_SPEED_MHZ: u32, const CYCLES_HIT: u32, const CYCLES_MISS: u32>
         let (_, baseline) = *results.first().unwrap();
         for (sim, time) in results {
             sim.print_summary();
-            println!("Relative Speed: {:.3} %\n", time / baseline);
+            println!(
+                "Relative Speed: +{:.3}%\n",
+                (time - baseline) / baseline * 100.0
+            );
         }
     }
 }

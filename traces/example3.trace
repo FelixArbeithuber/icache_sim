@@ -1,0 +1,33 @@
+INSTRUCTION_SIZE = 32b
+
+fn a() {
+    0x00..0x1F40
+}
+
+fn b() {
+    0x1F40..0x3E80
+}
+
+fn c() {
+    0x3E80..0x5DC0
+}
+
+'functions' {
+    loop(10000) {
+        a()
+        a()
+        b()
+        b()
+        c()
+    }
+}
+
+'inlined' {
+    loop(10000) {
+        0x00..0x1F40
+        0x1F40..0x3E80
+        0x3E80..0x5DC0
+        0x5DC0..0x7D00
+        0x7D00..0x9C40
+    }
+}
