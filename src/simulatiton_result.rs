@@ -25,8 +25,8 @@ impl SimulationResult {
 
     pub fn print_summary(&self) {
         println!("Hits: {}, Misses: {}", self.hit_count, self.miss_count);
-        println!("Percent Hits: {}%", self.percent_hit());
-        println!("Percent Misses: {}%", self.percent_miss());
+        println!("Percent Hits: {:.3} %", self.percent_hit());
+        println!("Percent Misses: {:.3} %", self.percent_miss());
     }
 
     pub fn print_trace(&self) {

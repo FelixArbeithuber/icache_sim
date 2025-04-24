@@ -4,11 +4,12 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use winnow::ascii::{alphanumeric1, line_ending, multispace0, space0};
 use winnow::combinator::{
-    alt, delimited, dispatch, eof, fail, preceded, repeat, repeat_till, separated_pair, terminated,
+    alt, cut_err, delimited, eof, fail, peek, preceded, repeat, repeat_till, separated_pair,
+    terminated,
 };
 use winnow::error::{ContextError, ErrMode, ParseError, StrContext, StrContextValue};
 use winnow::stream::AsChar;
-use winnow::token::{take, take_while};
+use winnow::token::take_while;
 use winnow::{ModalResult, Parser};
 
 #[derive(Debug)]
@@ -157,18 +158,17 @@ pub struct SwitchCase<'a> {
 }
 
 fn function<'a>(input: &mut &'a str) -> ModalResult<(&'a str, Function<'a>)> {
-    _ = (multispace0, "fn", space0)
-        .context(StrContext::Label("function start"))
-        .parse_next(input)?;
-
-    separated_pair(
-        function_name,
-        "()".context(StrContext::Label("function brackets")),
-        block.context(StrContext::Label("function block")),
+    preceded(
+        (multispace0, "fn", space0),
+        cut_err(separated_pair(
+            function_name,
+            "()".context(StrContext::Label("function brackets")),
+            block
+                .map(|block| Function { block })
+                .context(StrContext::Label("function block")),
+        )),
     )
     .parse_next(input)
-    .map_err(|e| e.cut())
-    .map(|(function_name, block)| (function_name, Function { block }))
 }
 
 fn function_name<'a>(input: &mut &'a str) -> ModalResult<&'a str> {
@@ -176,13 +176,13 @@ fn function_name<'a>(input: &mut &'a str) -> ModalResult<&'a str> {
         alphanumeric1
             .context(StrContext::Label("function name"))
             .context(StrContext::Expected(StrContextValue::Description(
-                "a function name consisting of ASCII characters (a-Z) and numbers (0-9)",
+                "a function name consisting of ASCII characters and numbers (a-Z, 0-9)",
             )))
             .parse_next(input)
     } else {
         fail.context(StrContext::Label("function name"))
             .context(StrContext::Expected(StrContextValue::Description(
-                "a function name starting with an ASCII characters (a-Z)",
+                "a function name starting with an ASCII character (a-Z)",
             )))
             .parse_next(input)
     }
@@ -192,16 +192,17 @@ fn function_name<'a>(input: &mut &'a str) -> ModalResult<&'a str> {
 fn block<'a>(input: &mut &'a str) -> ModalResult<Vec<Op<'a>>> {
     delimited(
         (multispace0, '{').context(StrContext::Label("block start")),
-        repeat_till(
-            1..,
-            op,
-            (multispace0, '}').context(StrContext::Label("block end")),
+        cut_err(
+            repeat_till(
+                1..,
+                op,
+                (multispace0, '}').context(StrContext::Label("block end")),
+            )
+            .map(|(op, _)| op),
         ),
         end,
     )
     .parse_next(input)
-    .map(|(op, _)| op)
-    .map_err(|e| e.cut())
 }
 
 fn op<'a>(input: &mut &'a str) -> ModalResult<Op<'a>> {
@@ -210,91 +211,125 @@ fn op<'a>(input: &mut &'a str) -> ModalResult<Op<'a>> {
         multispace0,
         alt((range, address, function_call, looop, switch)),
     )
-    .context(StrContext::Label("op"))
-    .context(StrContext::Expected(StrContextValue::Description("address ( 0x00 ), range( 0x00..0x00 ), function call ( a() ), switch ( switch: ... endswitch ), loop ( loop(1) {} )")))
+    .context(StrContext::Label("statement"))
     .parse_next(input)
 }
 
 fn address<'a>(input: &mut &'a str) -> ModalResult<Op<'a>> {
-    terminated(integer, end)
-        .context(StrContext::Label("address"))
-        .parse_next(input)
-        .map(|addr| Op::Address { addr })
+    terminated(integer.map(|addr| Op::Address { addr }), end).parse_next(input)
 }
 
 fn range<'a>(input: &mut &'a str) -> ModalResult<Op<'a>> {
-    terminated(separated_pair(integer, "..", integer), end)
-        .context(StrContext::Label("range"))
+    fn range_inner(input: &mut &str) -> ModalResult<(usize, usize)> {
+        terminated(
+            separated_pair(
+                integer,
+                "..",
+                cut_err(integer).context(StrContext::Label("second address of range")),
+            ),
+            end,
+        )
         .parse_next(input)
-        .map(|(addr_start, addr_end)| Op::Range {
-            addr_start,
-            addr_end,
-        })
+    }
+
+    let (addr_start, addr_end) = peek(range_inner).parse_next(input)?;
+
+    if addr_start < addr_end {
+        range_inner
+            .parse_next(input)
+            .map(|(addr_start, addr_end)| Op::Range {
+                addr_start,
+                addr_end,
+            })
+    } else {
+        cut_err(fail)
+            .context(StrContext::Label("range, range is empty"))
+            .parse_next(input)
+    }
 }
 
 fn function_call<'a>(input: &mut &'a str) -> ModalResult<Op<'a>> {
     terminated(function_name, ("()", end))
-        .context(StrContext::Label("function call"))
-        .parse_next(input)
         .map(|function_name| Op::FunctionCall { function_name })
-        .map_err(|e| e.backtrack())
+        .parse_next(input)
+        .map_err(|e| e.backtrack()) // remove cut_err from function_name
 }
 
 fn looop<'a>(input: &mut &'a str) -> ModalResult<Op<'a>> {
-    _ = "loop".parse_next(input)?;
-
-    (
-        delimited((space0, '(', space0), integer, (space0, ')'))
+    preceded(
+        "loop",
+        cut_err((
+            delimited(
+                (space0, '(', space0),
+                decimal_integer,
+                (space0, ')', space0),
+            )
             .context(StrContext::Label("loop count")),
-        block,
+            block,
+        ))
+        .map(|(count, block)| Op::Loop { count, block }),
     )
-        .context(StrContext::Label("loop"))
-        .parse_next(input)
-        .map(|(count, block)| Op::Loop { count, block })
-        .map_err(|e| e.cut())
+    .parse_next(input)
 }
 
 fn switch<'a>(input: &mut &'a str) -> ModalResult<Op<'a>> {
-    _ = ("switch:", end)
-        .context(StrContext::Label("switch start"))
-        .parse_next(input)?;
-
-    terminated(
-        repeat_till(
-            1..,
-            switch_case,
-            (multispace0, "endswitch").context(StrContext::Label("switch end")),
-        ),
-        end,
+    preceded(
+        ("switch:", cut_err(end)),
+        cut_err(terminated(
+            repeat_till(
+                1..,
+                switch_case,
+                (multispace0, "endswitch").context(StrContext::Label("switch end")),
+            )
+            .map(|(cases, _)| Op::Switch { cases }),
+            end,
+        )),
     )
     .parse_next(input)
-    .map(|(cases, _)| Op::Switch { cases })
 }
 
 fn switch_case<'a>(input: &mut &'a str) -> ModalResult<SwitchCase<'a>> {
     separated_pair(
-        delimited((space0, '(', space0), integer, (space0, ')', space0)),
+        delimited(
+            (space0, '(', space0),
+            decimal_integer,
+            (space0, ')', space0),
+        ),
         (space0, ':', space0),
         block,
     )
+    .map(|(weight, block)| SwitchCase { weight, block })
     .context(StrContext::Label("switch case"))
     .parse_next(input)
-    .map(|(weight, block)| SwitchCase { weight, block })
 }
 
 fn integer(input: &mut &str) -> ModalResult<usize> {
-    alt((dispatch! {
-        take(2usize);
-        "0b" => take_while(1.., '0'..='1').try_map(|s| usize::from_str_radix(s, 2)),
-        "0o" => take_while(1.., '0'..='7').try_map(|s| usize::from_str_radix(s, 8)),
-        "0x" => take_while(1.., ('0'..='9', 'a'..='f', 'A'..='F')).try_map(|s| usize::from_str_radix(s, 16)),
-        _ => fail::<_, usize, _>,
-    }, decimal_integer))
+    alt((
+        preceded(
+            "0b",
+            cut_err(take_while(1.., '0'..='1'))
+                .try_map(|s| usize::from_str_radix(s, 2))
+                .context(StrContext::Label("binary number")),
+        ),
+        preceded(
+            "0o",
+            cut_err(take_while(1.., '0'..='7'))
+                .try_map(|s| usize::from_str_radix(s, 8))
+                .context(StrContext::Label("octal number")),
+        ),
+        preceded(
+            "0x",
+            cut_err(take_while(1.., ('0'..='9', 'a'..='f', 'A'..='F')))
+                .try_map(|s| usize::from_str_radix(s, 16))
+                .context(StrContext::Label("hexadecimal number")),
+        ),
+    ))
     .parse_next(input)
 }
 
 fn decimal_integer(input: &mut &str) -> ModalResult<usize> {
     take_while(1.., '0'..='9')
+        .context(StrContext::Label("decimal integer"))
         .try_map(str::parse::<usize>)
         .parse_next(input)
 }
