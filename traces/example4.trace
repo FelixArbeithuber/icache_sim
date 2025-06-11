@@ -1,73 +1,45 @@
 INSTRUCTION_SIZE = 32b
 
-// --- function order 1 ---
-
-fn a1() {
-    0x0..0x100
+fn a() {
+    0x100..0x200
 }
 
-fn unrelated1() {
-    0x2000..0x2100
-}
-
-fn b1() {
+fn b() {
     0x2100..0x2200
 }
 
-fn c1() {
-    0x4000..0x4100
+fn c() {
+    0x4100..0x4200
 }
 
-fn d1() {
-    0x6000..0x6100
+fn d() {
+    0x6100..0x6200
 }
 
 fn e1() {
     0x8000..0x8100
 }
 
-// --- function order 2 ---
-
-fn a2() {
-    0x0..0x100
-}
-
-fn b2() {
-    0x2000..0x2100
-}
-
-fn c2() {
-    0x4000..0x4100
-}
-
-fn d2() {
-    0x6000..0x6100
-}
-
 fn e2() {
-    0x8000..0x8100
+    0x8000..0x8104
 }
 
-fn unrelated2() {
-    0x8100..0x8200
-}
-
-'order 1' {
+'fits cacheline' {
     loop(10000) {
-        a1()
-        b1()
-        c1()
-        d1()
+        a()
+        b()
+        c()
+        d()
         e1()
     }
 }
 
-'order 2' {
+'doesnt fit cacheline' {
     loop(10000) {
-        a2()
-        b2()
-        c2()
-        d2()
+        a()
+        b()
+        c()
+        d()
         e2()
     }
 }
