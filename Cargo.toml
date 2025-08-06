@@ -1,14 +1,10 @@
 [package]
-name = "lru_sim"
+name = "icache_sim"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-rand = { version = "0.9.0", default-features = false, features = [
-    "alloc",
-    "std",
-    "std_rng",
-] }
+rand = { version = "0.9.0", default-features = false, features = ["alloc", "std", "std_rng"] }
 winnow = "0.7.4"
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]

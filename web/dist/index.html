@@ -3,12 +3,12 @@
     <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>lru_sim</title>
+        <title>icache_sim</title>
         
         
-    <link rel="stylesheet" crossorigin href="./index-20711dyz.css"><script type="module" crossorigin src="./index-tjyza4ht.js"></script></head>
+    <link rel="stylesheet" crossorigin href="./index-rqtj366d.css"><script type="module" crossorigin src="./index-m9krzghq.js"></script></head>
     <body>
-        <h1>lru_sim</h1>
+        <h1>icache_sim</h1>
 
         <div id="content">
             <div id="controls">
@@ -21,6 +21,14 @@
                     <option value="example5.trace">Example 5</option>
                 </select>
                 <div id="controls-separator"></div>
+                <div style="margin-inline: 5px">
+                    <label>Cycles Hit:&nbsp;</label>
+                    <input id="hit-cycles-input" type="number" value="1" size="5"/>
+                </div>
+                <div style="margin-inline: 10px">
+                    <label>Cycles Miss:&nbsp;</label>
+                    <input id="miss-cycles-input" type="number" value="10" size="5"/>
+                </div>
                 <button id="simulate-btn">Run</button>
             </div>
             <div id="main">

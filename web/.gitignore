@@ -1,6 +1,5 @@
 # dependencies (bun install)
 node_modules
-lru_sim
 
 # output
 out

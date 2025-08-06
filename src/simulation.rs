@@ -2,16 +2,20 @@ use std::path::Path;
 
 use crate::{lru::LruCache, trace::TraceFile};
 
+#[derive(Debug, Copy, Clone)]
+pub struct Params {
+    pub cycles_hit: u32,
+    pub cycles_miss: u32,
+}
+
 #[derive(Debug, Clone, Default)]
-pub struct Simulation<const CLOCK_SPEED_MHZ: u32, const CYCLES_HIT: u32, const CYCLES_MISS: u32> {
+pub struct Simulation<const CLOCK_SPEED_MHZ: u32> {
     name: String,
     hit_count: u32,
     miss_count: u32,
 }
 
-impl<const CLOCK_SPEED_MHZ: u32, const CYCLES_HIT: u32, const CYCLES_MISS: u32>
-    Simulation<CLOCK_SPEED_MHZ, CYCLES_HIT, CYCLES_MISS>
-{
+impl<const CLOCK_SPEED_MHZ: u32> Simulation<CLOCK_SPEED_MHZ> {
     pub fn simulate_file<const SETS: usize, const WAYS: usize, const LINE_SIZE: usize>(
         lru_cache: &mut LruCache<SETS, WAYS, LINE_SIZE>,
         file: impl AsRef<Path>,
@@ -71,7 +75,13 @@ impl<const CLOCK_SPEED_MHZ: u32, const CYCLES_HIT: u32, const CYCLES_MISS: u32>
             / (f64::from(self.hit_count) + f64::from(self.miss_count))
     }
 
-    pub fn format_summary(&self) -> String {
+    pub fn format_summary(
+        &self,
+        Params {
+            cycles_hit,
+            cycles_miss,
+        }: &Params,
+    ) -> String {
         let mut result = vec![
             format!("Trace: {}", self.name),
             format!(
@@ -82,13 +92,13 @@ impl<const CLOCK_SPEED_MHZ: u32, const CYCLES_HIT: u32, const CYCLES_MISS: u32>
             format!("Percent Hits: {:.3}%", self.percent_hit()),
             format!("Percent Misses: {:.3}%", self.percent_miss()),
             format!(
-                "Assuming Clock-Speed: {CLOCK_SPEED_MHZ} MHz, Cache-Hit: {CYCLES_HIT} cycles, Cache-Miss: {CYCLES_MISS} cycles"
+                "Assuming Clock-Speed: {CLOCK_SPEED_MHZ} MHz, Cache-Hit: {cycles_hit} cycles, Cache-Miss: {cycles_miss} cycles"
             ),
         ];
 
         let cycle_time_us = f64::from(CLOCK_SPEED_MHZ).recip();
-        let total_time_us = f64::from(self.hit_count) * f64::from(CYCLES_HIT) * cycle_time_us
-            + f64::from(self.miss_count) * f64::from(CYCLES_MISS) * cycle_time_us;
+        let total_time_us = f64::from(self.hit_count) * f64::from(*cycles_hit) * cycle_time_us
+            + f64::from(self.miss_count) * f64::from(*cycles_miss) * cycle_time_us;
         if total_time_us >= 1_000_000.0 {
             result.push(format!("Total time: {:.3}s", total_time_us / 1_000_000.0));
         } else if total_time_us >= 1_000.0 {
@@ -100,9 +110,9 @@ impl<const CLOCK_SPEED_MHZ: u32, const CYCLES_HIT: u32, const CYCLES_MISS: u32>
         result.join("\n")
     }
 
-    pub fn compare(simulation_results: &[Self]) -> String {
-        let cycle_time_hit_us = f64::from(CYCLES_HIT) * f64::from(CLOCK_SPEED_MHZ).recip();
-        let cycle_time_miss_us = f64::from(CYCLES_MISS) * f64::from(CLOCK_SPEED_MHZ).recip();
+    pub fn compare(simulation_results: &[Self], config: Params) -> String {
+        let cycle_time_hit_us = f64::from(config.cycles_hit) * f64::from(CLOCK_SPEED_MHZ).recip();
+        let cycle_time_miss_us = f64::from(config.cycles_miss) * f64::from(CLOCK_SPEED_MHZ).recip();
         let mut results = simulation_results
             .iter()
             .map(|r| {
@@ -121,7 +131,7 @@ impl<const CLOCK_SPEED_MHZ: u32, const CYCLES_HIT: u32, const CYCLES_MISS: u32>
             .into_iter()
             .flat_map(|(sim, time)| {
                 vec![
-                    sim.format_summary(),
+                    sim.format_summary(&config),
                     format!(
                         "Relative Time: +{:.3}%\n",
                         (time - baseline) / baseline * 100.0

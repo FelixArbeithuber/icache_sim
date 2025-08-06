@@ -1,21 +1,17 @@
 {
-    "name": "web",
-    "module": "index.ts",
-    "type": "module",
-    "private": true,
-    "scripts": {
-        "clean": "rm -R dist lru_sim node_modules || true",
-        "prebundle": "bun clean ; wasm-pack build --target web --release --out-dir web/lru_sim && bun install",
-        "bundle": "bun build index.html --outdir=dist && cp lru_sim/lru_sim_bg.wasm dist"
-    },
-    "devDependencies": {
-        "@types/bun": "latest"
-    },
-    "peerDependencies": {
-        "typescript": "^5"
-    },
-    "dependencies": {
-        "lru_sim": "file:lru_sim",
-        "codemirror": "^6.0.1"
-    }
+  "name": "web",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "clean": "rm -r dist || true",
+    "prebundle": "bun clean && bun install && wasm-pack build --target web --release --out-dir web/icache_sim",
+    "bundle": "bun build index.html --sourcemap=inline --asset-naming='[name].[ext]' --outdir=dist --target browser --minify"
+  },
+  "dependencies": {
+    "codemirror": "^6.0.1"
+  },
+  "devDependencies": {
+    "wasm-pack": "^0.13.1"
+  }
 }

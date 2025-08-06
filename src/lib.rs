@@ -7,9 +7,9 @@ use wasm_bindgen::prelude::*;
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 #[wasm_bindgen]
-pub fn run_simulation(trace: &str) -> String {
+pub fn run_simulation(trace: &str, cycles_hit: u32, cycles_miss: u32) -> String {
     use lru::LruCache;
-    use simulation::Simulation;
+    use simulation::{Params, Simulation};
 
     // https://developer.arm.com/documentation/102199/0001/Memory-System/Level-1-caches?lang=en
     let mut lru_cache: LruCache<128, 4, 64> = LruCache::new();
@@ -17,8 +17,14 @@ pub fn run_simulation(trace: &str) -> String {
     let mut result = Vec::new();
     result.push(lru_cache.format_info());
 
-    match Simulation::<1_600, 1, 10>::simulate(&mut lru_cache, trace) {
-        Ok(simulation_results) => result.push(Simulation::compare(&simulation_results)),
+    match Simulation::<1_600>::simulate(&mut lru_cache, trace) {
+        Ok(simulation_results) => result.push(Simulation::compare(
+            &simulation_results,
+            Params {
+                cycles_hit,
+                cycles_miss,
+            },
+        )),
         Err(e) => return e,
     };
 

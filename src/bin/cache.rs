@@ -1,4 +1,5 @@
-use lru_sim::{lru::LruCache, simulation::Simulation};
+use icache_sim::lru::LruCache;
+use icache_sim::simulation::{Params, Simulation};
 
 fn main() {
     // https://developer.arm.com/documentation/102199/0001/Memory-System/Level-1-caches?lang=en
@@ -17,8 +18,17 @@ fn main() {
         .unwrap();
 
     println!("{}", lru_cache.format_info());
-    match Simulation::<1_600, 1, 10>::simulate(&mut lru_cache, &file_content) {
-        Ok(simulation_results) => println!("{}", Simulation::compare(&simulation_results)),
+    match Simulation::<1_600>::simulate(&mut lru_cache, &file_content) {
+        Ok(simulation_results) => println!(
+            "{}",
+            Simulation::compare(
+                &simulation_results,
+                Params {
+                    cycles_hit: 1,
+                    cycles_miss: 10
+                }
+            )
+        ),
         Err(e) => println!("{e}"),
     };
 }

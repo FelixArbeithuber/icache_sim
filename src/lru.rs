@@ -19,9 +19,9 @@ impl<const SETS: usize, const WAYS: usize, const LINE_SIZE: usize> LruCache<SETS
         [
             "LRU Cache:",
             &format!("\tTotal Size: {}B", LINE_SIZE * WAYS * SETS),
-            &format!("\tSets: {}", SETS),
-            &format!("\tWays {}", WAYS),
-            &format!("\tLine-Size: {}B", LINE_SIZE),
+            &format!("\tSets: {SETS}"),
+            &format!("\tWays {WAYS}"),
+            &format!("\tLine-Size: {LINE_SIZE}B"),
             &format!(
                 "\t| {} tag bits | {} set bits | {} offset bits |\n",
                 std::mem::size_of::<usize>() * 8 - (self.set_index_width + self.offset_width),
