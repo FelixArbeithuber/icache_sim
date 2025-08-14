@@ -51,10 +51,20 @@ impl<const CLOCK_SPEED_MHZ: u32> Simulation<CLOCK_SPEED_MHZ> {
                         hit_count: 0,
                         miss_count: 0,
                     },
-                    |mut simulation_result, address| {
-                        match lru_cache.get(address) {
-                            CacheHit::Hit => simulation_result.hit_count += 1,
-                            CacheHit::Miss { .. } => simulation_result.miss_count += 1,
+                    |mut simulation_result, instruction| {
+                        // check all byte addresses
+                        // if we just check the start address of the instruction
+                        // we would fail to consider the case where an instruction spans multiple cache-blocks
+                        // this happens for variable size instruction sets (x86, Arm thumb)
+                        let mut hit = true;
+                        for i in 0..(instruction.length / 8) {
+                            hit &= lru_cache.get(instruction.address + i) == CacheHit::Hit;
+                        }
+
+                        if hit {
+                            simulation_result.hit_count += 1;
+                        } else {
+                            simulation_result.miss_count += 1;
                         }
 
                         simulation_result

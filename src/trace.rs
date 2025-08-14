@@ -119,8 +119,13 @@ impl<'a> TryFrom<&'a str> for TraceFile<'a> {
     }
 }
 
+pub struct Instruction {
+    pub address: usize,
+    pub length: usize,
+}
+
 impl<'a> IntoIterator for Trace<'a> {
-    type Item = usize;
+    type Item = Instruction;
     type IntoIter = std::vec::IntoIter<Self::Item>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -132,9 +137,14 @@ impl<'a> IntoIterator for Trace<'a> {
             match op {
                 Op::Range {
                     addr_start,
-                    addr_size,
+                    instr_length,
                     addr_end,
-                } => addresses.extend((*addr_start..*addr_end).step_by(*addr_size / 8)),
+                } => addresses.extend((*addr_start..*addr_end).step_by(*instr_length / 8).map(
+                    |address| Instruction {
+                        address,
+                        length: *instr_length,
+                    },
+                )),
                 Op::FunctionCall { function_name } => {
                     let function = self.functions.get(function_name).unwrap();
                     queue.extend(function.block.ops.iter().rev());
@@ -185,7 +195,7 @@ struct Function<'a> {
 enum Op<'a> {
     Range {
         addr_start: usize,
-        addr_size: usize,
+        instr_length: usize,
         addr_end: usize,
     },
     FunctionCall {
@@ -278,7 +288,7 @@ fn range<'a>(input: &mut &'a str) -> ModalResult<Op<'a>> {
         terminated((integer, delimited("..", integer, ".."), integer), end).parse_next(input)
     }
 
-    let (addr_start, addr_size, addr_end) = peek(range_inner).parse_next(input)?;
+    let (addr_start, instr_length, addr_end) = peek(range_inner).parse_next(input)?;
 
     if addr_start >= addr_end {
         return fail
@@ -286,7 +296,15 @@ fn range<'a>(input: &mut &'a str) -> ModalResult<Op<'a>> {
             .parse_next(input)?;
     }
 
-    if (addr_end - addr_start) % (addr_size / 8) != 0 {
+    if instr_length % 8 != 0 {
+        return fail
+            .context(StrContext::Label(
+                "range: instruction size is not a multiple of 8 (bits)",
+            ))
+            .parse_next(input)?;
+    }
+
+    if (addr_end - addr_start) % (instr_length / 8) != 0 {
         return fail
             .context(StrContext::Label(
                 "range: instruction size does not cleanly fit in range",
@@ -296,9 +314,9 @@ fn range<'a>(input: &mut &'a str) -> ModalResult<Op<'a>> {
 
     range_inner
         .parse_next(input)
-        .map(|(addr_start, addr_size, addr_end)| Op::Range {
+        .map(|(addr_start, instr_length, addr_end)| Op::Range {
             addr_start,
-            addr_size,
+            instr_length,
             addr_end,
         })
 }
