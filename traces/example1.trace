@@ -1,26 +1,24 @@
-INSTRUCTION_SIZE = 32b
-
 // the total cache size is 32KB
 // => 4 functions with 8KB of instructions completely fill the cache
 
 fn a() {
-    0x00..0x1F40
+    0x00..32..0x1F40
 }
 
 fn b() {
-    0x1F40..0x3E80
+    0x1F40..32..0x3E80
 }
 
 fn c() {
-    0x3E80..0x5DC0
+    0x3E80..32..0x5DC0
 }
 
 fn d() {
-    0x5DC0..0x7D00
+    0x5DC0..32..0x7D00
 }
 
 fn e() {
-    0x7D00..0x9C40
+    0x7D00..32..0x9C40
 }
 
 'block 1' {

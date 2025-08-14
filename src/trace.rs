@@ -46,7 +46,6 @@ impl<'a> IntoIterator for TraceFile<'a> {
 #[derive(Debug)]
 pub struct Trace<'a> {
     name: &'a str,
-    instruction_size: usize,
     functions: HashMap<&'a str, Function<'a>>,
     block: Block<'a>,
 }
@@ -65,16 +64,7 @@ impl<'a> TryFrom<&'a str> for TraceFile<'a> {
         type Functions<'a> = Vec<(Name<'a>, Function<'a>)>;
         type TraceBlocks<'a> = Vec<(Name<'a>, Block<'a>)>;
 
-        let (instruction_size, function_list, trace_blocks): (usize, Functions, TraceBlocks) = (
-            delimited(
-                (multispace, "INSTRUCTION_SIZE", space, '=', space),
-                decimal_integer,
-                (space, "b", end),
-            )
-            .context(StrContext::Label("instruction size"))
-            .context(StrContext::Expected(StrContextValue::Description(
-                "INSTRUCTION_SIZE = {number of bits}b",
-            ))),
+        let (function_list, trace_blocks): (Functions, TraceBlocks) = (
             repeat(0.., function).context(StrContext::Label("function definitions")),
             repeat(1.., trace_block).context(StrContext::Label("trace blocks")),
         )
@@ -120,7 +110,6 @@ impl<'a> TryFrom<&'a str> for TraceFile<'a> {
             .into_iter()
             .map(|(name, block)| Trace {
                 name,
-                instruction_size,
                 functions: functions.clone(),
                 block,
             })
@@ -141,11 +130,11 @@ impl<'a> IntoIterator for Trace<'a> {
         let mut queue = Vec::<&Op<'a>>::from_iter(self.block.ops.iter().rev());
         while let Some(op) = queue.pop() {
             match op {
-                Op::Address { addr } => addresses.push(*addr),
                 Op::Range {
                     addr_start,
+                    addr_size,
                     addr_end,
-                } => addresses.extend((*addr_start..*addr_end).step_by(self.instruction_size / 8)),
+                } => addresses.extend((*addr_start..*addr_end).step_by(*addr_size / 8)),
                 Op::FunctionCall { function_name } => {
                     let function = self.functions.get(function_name).unwrap();
                     queue.extend(function.block.ops.iter().rev());
@@ -194,11 +183,21 @@ struct Function<'a> {
 
 #[derive(Debug, Clone, PartialEq)]
 enum Op<'a> {
-    Address { addr: usize },
-    Range { addr_start: usize, addr_end: usize },
-    FunctionCall { function_name: &'a str },
-    Loop { count: usize, block: Block<'a> },
-    Switch { cases: Vec<SwitchCase<'a>> },
+    Range {
+        addr_start: usize,
+        addr_size: usize,
+        addr_end: usize,
+    },
+    FunctionCall {
+        function_name: &'a str,
+    },
+    Loop {
+        count: usize,
+        block: Block<'a>,
+    },
+    Switch {
+        cases: Vec<SwitchCase<'a>>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -269,45 +268,39 @@ fn block<'a>(input: &mut &'a str) -> ModalResult<Block<'a>> {
 
 fn op<'a>(input: &mut &'a str) -> ModalResult<Op<'a>> {
     // important: try 'range' before 'address' because of ambiguity
-    preceded(
-        multispace,
-        alt((range, address, function_call, looop, switch)),
-    )
-    .context(StrContext::Label("statement"))
-    .parse_next(input)
-}
-
-fn address<'a>(input: &mut &'a str) -> ModalResult<Op<'a>> {
-    terminated(integer.map(|addr| Op::Address { addr }), end).parse_next(input)
+    preceded(multispace, alt((function_call, looop, switch, range)))
+        .context(StrContext::Label("statement"))
+        .parse_next(input)
 }
 
 fn range<'a>(input: &mut &'a str) -> ModalResult<Op<'a>> {
-    fn range_inner(input: &mut &str) -> ModalResult<(usize, usize)> {
-        terminated(
-            separated_pair(
-                integer,
-                "..",
-                cut_err(integer).context(StrContext::Label("second address of range")),
-            ),
-            end,
-        )
+    fn range_inner(input: &mut &str) -> ModalResult<(usize, usize, usize)> {
+        terminated((integer, delimited("..", integer, ".."), integer), end).parse_next(input)
+    }
+
+    let (addr_start, addr_size, addr_end) = peek(range_inner).parse_next(input)?;
+
+    if addr_start >= addr_end {
+        return fail
+            .context(StrContext::Label("range: range is empty"))
+            .parse_next(input)?;
+    }
+
+    if (addr_end - addr_start) % (addr_size / 8) != 0 {
+        return fail
+            .context(StrContext::Label(
+                "range: instruction size does not cleanly fit in range",
+            ))
+            .parse_next(input)?;
+    }
+
+    range_inner
         .parse_next(input)
-    }
-
-    let (addr_start, addr_end) = peek(range_inner).parse_next(input)?;
-
-    if addr_start < addr_end {
-        range_inner
-            .parse_next(input)
-            .map(|(addr_start, addr_end)| Op::Range {
-                addr_start,
-                addr_end,
-            })
-    } else {
-        cut_err(fail)
-            .context(StrContext::Label("range, range is empty"))
-            .parse_next(input)
-    }
+        .map(|(addr_start, addr_size, addr_end)| Op::Range {
+            addr_start,
+            addr_size,
+            addr_end,
+        })
 }
 
 fn function_call<'a>(input: &mut &'a str) -> ModalResult<Op<'a>> {
@@ -360,6 +353,12 @@ fn switch_case<'a>(input: &mut &'a str) -> ModalResult<SwitchCase<'a>> {
 fn integer(input: &mut &str) -> ModalResult<usize> {
     alt((
         preceded(
+            "0x",
+            cut_err(take_while(1.., ('0'..='9', 'a'..='f', 'A'..='F')))
+                .try_map(|s| usize::from_str_radix(s, 16))
+                .context(StrContext::Label("hexadecimal number")),
+        ),
+        preceded(
             "0b",
             cut_err(take_while(1.., '0'..='1'))
                 .try_map(|s| usize::from_str_radix(s, 2))
@@ -371,12 +370,9 @@ fn integer(input: &mut &str) -> ModalResult<usize> {
                 .try_map(|s| usize::from_str_radix(s, 8))
                 .context(StrContext::Label("octal number")),
         ),
-        preceded(
-            "0x",
-            cut_err(take_while(1.., ('0'..='9', 'a'..='f', 'A'..='F')))
-                .try_map(|s| usize::from_str_radix(s, 16))
-                .context(StrContext::Label("hexadecimal number")),
-        ),
+        cut_err(take_while(1.., '0'..='9'))
+            .try_map(|s: &str| s.parse::<usize>())
+            .context(StrContext::Label("decimal number")),
     ))
     .parse_next(input)
 }
