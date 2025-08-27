@@ -1,5 +1,5 @@
 fn a() {
-    0x00..32..0x1F40
+    0x0..32..0x1F40
 }
 
 fn b() {
@@ -22,7 +22,7 @@ fn c() {
 
 'inlined' {
     loop(10000) {
-        0x00..32..0x1F40   // inlined function a()
+        0x0..32..0x1F40   // inlined function a()
         0x1F40..32..0x3E80 // inlined function a()
         0x3E80..32..0x5DC0 // inlined function b()
         0x5DC0..32..0x7D00 // inlined function b()

@@ -2,7 +2,7 @@
 // => 4 functions with 8KB of instructions completely fill the cache
 
 fn a() {
-    0x00..32..0x1F40
+    0x0..32..0x1F40
 }
 
 fn b() {

@@ -1,15 +1,17 @@
-import { EditorView, basicSetup } from "codemirror";
+import { basicSetup } from "codemirror";
+import { EditorView, keymap } from "@codemirror/view";
+import { indentWithTab } from "@codemirror/commands";
 import init, { run_simulation } from "./icache_sim/icache_sim.js";
 
 // import so bun includes wasm blob when bundling
 import * as wasm from "./icache_sim/icache_sim_bg.wasm";
 // use the import in some way so it doesn't get optimized away
-(_ => { })(wasm);
+((_) => {})(wasm);
 
 const editor = new EditorView({
     doc: "",
     parent: document.querySelector("#editor")!,
-    extensions: [basicSetup],
+    extensions: [basicSetup, keymap.of([indentWithTab])],
 });
 
 const output = new EditorView({
@@ -46,7 +48,6 @@ init().then(() => {
 
     const tracesSelect: HTMLSelectElement = document.querySelector("#traces-select")!;
     tracesSelect.addEventListener("change", (e) => {
-
         setTrace((e.target! as HTMLSelectElement).value);
     });
     setTrace(tracesSelect.value);

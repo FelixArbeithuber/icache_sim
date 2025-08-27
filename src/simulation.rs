@@ -61,6 +61,7 @@ impl<const CLOCK_SPEED_MHZ: u32> Simulation<CLOCK_SPEED_MHZ> {
                             hit &= lru_cache.get(instruction.address + i) == CacheHit::Hit;
                         }
 
+                        println!("{:X}: hit={:?}", instruction.address, hit);
                         if hit {
                             simulation_result.hit_count += 1;
                         } else {

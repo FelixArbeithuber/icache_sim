@@ -4,6 +4,8 @@
     "": {
       "name": "web",
       "dependencies": {
+        "@codemirror/commands": "^6.8.1",
+        "@codemirror/view": "^6.38.1",
         "codemirror": "^6.0.1",
       },
       "devDependencies": {
