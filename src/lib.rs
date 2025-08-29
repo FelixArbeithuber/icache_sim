@@ -7,7 +7,12 @@ use wasm_bindgen::prelude::*;
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 #[wasm_bindgen]
-pub fn run_simulation(trace: &str, cycles_hit: u32, cycles_miss: u32) -> String {
+pub fn run_simulation(
+    trace: &str,
+    cycles_hit: u32,
+    cycles_miss: u32,
+    log_memory_accesses: bool,
+) -> String {
     use lru::LruCache;
     use simulation::{Params, Simulation};
 
@@ -17,7 +22,7 @@ pub fn run_simulation(trace: &str, cycles_hit: u32, cycles_miss: u32) -> String 
     let mut result = Vec::new();
     result.push(lru_cache.format_info());
 
-    match Simulation::<1_600>::simulate(&mut lru_cache, trace) {
+    match Simulation::<1_600>::simulate(&mut lru_cache, trace, log_memory_accesses) {
         Ok(simulation_results) => result.push(Simulation::compare(
             &simulation_results,
             Params {

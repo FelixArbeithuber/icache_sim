@@ -1,4 +1,7 @@
-use std::path::Path;
+use std::{
+    io::{Write, stdout},
+    path::Path,
+};
 
 use crate::{lru::LruCache, trace::TraceFile};
 
@@ -19,18 +22,20 @@ impl<const CLOCK_SPEED_MHZ: u32> Simulation<CLOCK_SPEED_MHZ> {
     pub fn simulate_file<const SETS: usize, const WAYS: usize, const LINE_SIZE: usize>(
         lru_cache: &mut LruCache<SETS, WAYS, LINE_SIZE>,
         file: impl AsRef<Path>,
+        log_memory_accesses: bool,
     ) -> Result<Vec<Self>, String> {
         let current_dir =
             std::env::current_dir().map_err(|e| format!("unable to get current directory: {e}"))?;
 
         let file_content = std::fs::read_to_string(current_dir.join(file))
             .map_err(|e| format!("failed to read file: {e}"))?;
-        Self::simulate(lru_cache, file_content.as_str())
+        Self::simulate(lru_cache, file_content.as_str(), log_memory_accesses)
     }
 
     pub fn simulate<const SETS: usize, const WAYS: usize, const LINE_SIZE: usize>(
         lru_cache: &mut LruCache<SETS, WAYS, LINE_SIZE>,
         file_data: &str,
+        log_memory_accesses: bool,
     ) -> Result<Vec<Self>, String> {
         let trace_file = match TraceFile::try_from(file_data) {
             Ok(trace_file) => trace_file,
@@ -39,15 +44,18 @@ impl<const CLOCK_SPEED_MHZ: u32> Simulation<CLOCK_SPEED_MHZ> {
             }
         };
 
+        let mut stdout = stdout().lock();
         let simulation_results = trace_file
             .into_iter()
-            .map(|trace| {
-                lru_cache.reset();
+            .map(|(name, block)| {
+                if log_memory_accesses {
+                    stdout.write_fmt(format_args!("{name}:\n")).unwrap();
+                }
 
-                let name = trace.name().to_string();
-                trace.into_iter().fold(
+                lru_cache.reset();
+                block.into_iter().fold(
                     Simulation {
-                        name,
+                        name: name.to_string(),
                         hit_count: 0,
                         miss_count: 0,
                     },
@@ -61,11 +69,19 @@ impl<const CLOCK_SPEED_MHZ: u32> Simulation<CLOCK_SPEED_MHZ> {
                             hit &= lru_cache.get(instruction.address + i) == CacheHit::Hit;
                         }
 
-                        println!("{:X}: hit={:?}", instruction.address, hit);
                         if hit {
                             simulation_result.hit_count += 1;
                         } else {
                             simulation_result.miss_count += 1;
+                        }
+
+                        if log_memory_accesses {
+                            stdout
+                                .write_fmt(format_args!(
+                                    "{:X}: hit={:?}\n",
+                                    instruction.address, hit
+                                ))
+                                .unwrap();
                         }
 
                         simulation_result
@@ -73,6 +89,10 @@ impl<const CLOCK_SPEED_MHZ: u32> Simulation<CLOCK_SPEED_MHZ> {
                 )
             })
             .collect();
+
+        if log_memory_accesses {
+            _ = stdout.write(b"\n");
+        }
 
         Ok(simulation_results)
     }
@@ -136,7 +156,9 @@ impl<const CLOCK_SPEED_MHZ: u32> Simulation<CLOCK_SPEED_MHZ> {
             .collect::<Vec<_>>();
 
         results.sort_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap());
-        let (_, baseline) = *results.first().unwrap();
+        let Some(baseline) = results.first().map(|f| f.1) else {
+            return String::from("nothing to compare");
+        };
 
         results
             .into_iter()

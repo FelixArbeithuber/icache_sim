@@ -1,21 +1,21 @@
 // this is a comment
 
-// this is a function definition
-fn b_() {
+// this is a block definition
+'b_' {
     0x0..16..0x2 // access addresses [0x0, 0x2] because of 16b instruction size
     0x0..32..0x4 // access addresses [0x0] because of 32b instruction size
 }
 
-fn a_b() {
+'a_b' {
     0x0..32..0x4
 }
 
-fn c() {
+'c' {
     0x20..32..0x40
 }
 
 // all declared blocks get executed independently and compared
-'block-_ name' {
+compare 'block-_name' {
     a_b() // function call
 
     // a switch statement
@@ -37,4 +37,9 @@ fn c() {
     loop (2) {
         0x20..32..0x40
     }
+}
+
+// there can be multiple main blocks
+compare 'another_one' {
+    0x0..32..0x4
 }

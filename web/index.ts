@@ -6,7 +6,7 @@ import init, { run_simulation } from "./icache_sim/icache_sim.js";
 // import so bun includes wasm blob when bundling
 import * as wasm from "./icache_sim/icache_sim_bg.wasm";
 // use the import in some way so it doesn't get optimized away
-((_) => {})(wasm);
+((_) => { })(wasm);
 
 const editor = new EditorView({
     doc: "",
@@ -35,13 +35,14 @@ async function setTrace(trace: string) {
 init().then(() => {
     const hitCyclesInput: HTMLInputElement = document.querySelector("#hit-cycles-input")!;
     const missCyclesInput: HTMLInputElement = document.querySelector("#miss-cycles-input")!;
+    const logMemoryAccesses: HTMLInputElement = document.querySelector("#log-memory-accesses-input")!;
     const simulateBtn: HTMLButtonElement = document.querySelector("#simulate-btn")!;
     simulateBtn.addEventListener("click", () => {
         setText(output, "running simulation ...");
         // delay wasm simulation to give js time to update the text before blocking the UI
         setTimeout(() => {
             const trace = editor.state.doc.toString();
-            const result = run_simulation(trace, parseInt(hitCyclesInput.value), parseInt(missCyclesInput.value));
+            const result = run_simulation(trace, parseInt(hitCyclesInput.value), parseInt(missCyclesInput.value), logMemoryAccesses.checked);
             setText(output, result);
         }, 0);
     });

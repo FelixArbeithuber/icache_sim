@@ -2,12 +2,12 @@ use std::collections::HashMap;
 
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use winnow::ascii::{line_ending, multispace0, space0, till_line_ending};
+use winnow::ascii::{line_ending, multispace0, space0, space1, till_line_ending};
 use winnow::combinator::{
     alt, cut_err, delimited, eof, fail, opt, peek, preceded, repeat, repeat_till, separated_pair,
     terminated,
 };
-use winnow::error::{ContextError, ErrMode, ParseError, StrContext, StrContextValue};
+use winnow::error::{ContextError, ParseError, StrContext};
 use winnow::stream::AsChar;
 use winnow::token::take_while;
 use winnow::{ModalResult, Parser};
@@ -31,70 +31,46 @@ impl std::error::Error for TraceParseError<'_> {}
 
 #[derive(Debug)]
 pub struct TraceFile<'a> {
-    traces: Vec<Trace<'a>>,
-}
-
-impl<'a> IntoIterator for TraceFile<'a> {
-    type Item = Trace<'a>;
-    type IntoIter = std::vec::IntoIter<Self::Item>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.traces.into_iter()
-    }
-}
-
-#[derive(Debug)]
-pub struct Trace<'a> {
-    name: &'a str,
-    functions: HashMap<&'a str, Function<'a>>,
-    block: Block<'a>,
-}
-
-impl<'a> Trace<'a> {
-    pub fn name(&self) -> &'a str {
-        self.name
-    }
+    named_blocks: HashMap<&'a str, NamedBlock<'a>>,
 }
 
 impl<'a> TryFrom<&'a str> for TraceFile<'a> {
     type Error = TraceParseError<'a>;
 
     fn try_from(input: &'a str) -> Result<Self, Self::Error> {
-        type Name<'a> = &'a str;
-        type Functions<'a> = Vec<(Name<'a>, Function<'a>)>;
-        type TraceBlocks<'a> = Vec<(Name<'a>, Block<'a>)>;
-
-        let (function_list, trace_blocks): (Functions, TraceBlocks) = (
-            repeat(0.., function).context(StrContext::Label("function definitions")),
-            repeat(1.., trace_block).context(StrContext::Label("trace blocks")),
-        )
+        let blocks: Vec<NamedBlock<'a>> = repeat(0.., preceded(multispace, named_block))
+            .context(StrContext::Label("trace blocks"))
             .parse(input)
             .map_err(TraceParseError::ParseError)?;
 
-        let mut functions = HashMap::new();
-        for (function_name, function) in function_list {
-            if functions.contains_key(function_name) {
+        let mut block_map = HashMap::new();
+        for block in blocks {
+            if block_map.contains_key(block.name) {
                 return Err(TraceParseError::SyntaxError(format!(
-                    "function '{function_name}()' defined multiple times"
+                    "block '{}()' defined multiple times",
+                    block.name
                 )));
             }
-            functions.insert(function_name, function);
+
+            block_map.insert(block.name, block);
         }
 
         // the order we go through all statements does not matter
         // we just want to check if all functions mentioned have a corresponding definition
         let mut queue =
-            Vec::<&Op<'a>>::from_iter(trace_blocks.iter().flat_map(|(_, block)| block.ops.iter()));
+            Vec::<&Op<'a>>::from_iter(block_map.values().flat_map(|block| block.ops.iter()));
         while let Some(stmt) = queue.pop() {
             match stmt {
-                Op::FunctionCall { function_name } => {
-                    if !functions.contains_key(function_name) {
+                Op::BlockCall {
+                    block_name: function_name,
+                } => {
+                    if !block_map.contains_key(function_name) {
                         return Err(TraceParseError::SyntaxError(format!(
                             "unknown function '{function_name}()'"
                         )));
                     }
                 }
-                Op::Loop { count: _, block } => {
+                Op::Loop { block, .. } => {
                     queue.extend(block.ops.iter());
                 }
                 Op::Switch { cases } => {
@@ -106,16 +82,77 @@ impl<'a> TryFrom<&'a str> for TraceFile<'a> {
             }
         }
 
-        let traces = trace_blocks
-            .into_iter()
-            .map(|(name, block)| Trace {
-                name,
-                functions: functions.clone(),
-                block,
-            })
-            .collect();
+        Ok(Self {
+            named_blocks: block_map,
+        })
+    }
+}
 
-        Ok(Self { traces })
+impl<'a> IntoIterator for TraceFile<'a> {
+    type Item = (&'a str, std::vec::IntoIter<Instruction>);
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        fn block_iter<'a>(
+            block: &NamedBlock<'a>,
+            block_map: &HashMap<&'a str, NamedBlock<'a>>,
+        ) -> std::vec::IntoIter<Instruction> {
+            let mut rng: StdRng = StdRng::seed_from_u64(0);
+            let mut addresses = Vec::new();
+
+            let mut queue = Vec::<&Op<'a>>::from_iter(block.ops.iter().rev());
+            while let Some(op) = queue.pop() {
+                match op {
+                    Op::Range {
+                        addr_start,
+                        instr_length,
+                        addr_end,
+                    } => addresses.extend((*addr_start..*addr_end).step_by(*instr_length / 8).map(
+                        |address| Instruction {
+                            address,
+                            length: *instr_length,
+                        },
+                    )),
+                    Op::BlockCall { block_name } => {
+                        queue.extend(block_map.get(block_name).unwrap().ops.iter().rev());
+                    }
+                    Op::Loop { count, block } => {
+                        for _ in 0..*count {
+                            queue.extend(block.ops.iter().rev());
+                        }
+                    }
+                    Op::Switch { cases } => {
+                        let mut weights: Vec<(usize, usize)> = cases
+                            .iter()
+                            .enumerate()
+                            .map(|(i, case)| (i, case.weight))
+                            .collect();
+                        weights.sort_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap());
+
+                        let total_weights = weights.iter().map(|(_, weight)| weight).sum();
+                        let random = rng.random_range(0..=total_weights);
+
+                        let mut sum = 0;
+                        for (i, weight) in weights {
+                            sum += weight;
+                            if sum >= random {
+                                queue.extend(cases.get(i).unwrap().block.ops.iter().rev());
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            addresses.into_iter()
+        }
+
+        self.named_blocks
+            .values()
+            .filter(|&block| block.compare)
+            .map(|block| (block.name, block_iter(block, &self.named_blocks)))
+            .collect::<Vec<_>>()
+            .into_iter()
     }
 }
 
@@ -124,71 +161,16 @@ pub struct Instruction {
     pub length: usize,
 }
 
-impl<'a> IntoIterator for Trace<'a> {
-    type Item = Instruction;
-    type IntoIter = std::vec::IntoIter<Self::Item>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        let mut rng: StdRng = StdRng::seed_from_u64(0);
-        let mut addresses = Vec::new();
-
-        let mut queue = Vec::<&Op<'a>>::from_iter(self.block.ops.iter().rev());
-        while let Some(op) = queue.pop() {
-            match op {
-                Op::Range {
-                    addr_start,
-                    instr_length,
-                    addr_end,
-                } => addresses.extend((*addr_start..*addr_end).step_by(*instr_length / 8).map(
-                    |address| Instruction {
-                        address,
-                        length: *instr_length,
-                    },
-                )),
-                Op::FunctionCall { function_name } => {
-                    let function = self.functions.get(function_name).unwrap();
-                    queue.extend(function.block.ops.iter().rev());
-                }
-                Op::Loop { count, block } => {
-                    for _ in 0..*count {
-                        queue.extend(block.ops.iter().rev());
-                    }
-                }
-                Op::Switch { cases } => {
-                    let mut weights: Vec<(usize, usize)> = cases
-                        .iter()
-                        .enumerate()
-                        .map(|(i, case)| (i, case.weight))
-                        .collect();
-                    weights.sort_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap());
-
-                    let total_weights = weights.iter().map(|(_, weight)| weight).sum();
-                    let random = rng.random_range(0..=total_weights);
-
-                    let mut sum = 0;
-                    for (i, weight) in weights {
-                        sum += weight;
-                        if sum >= random {
-                            queue.extend(cases.get(i).unwrap().block.ops.iter().rev());
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        addresses.into_iter()
-    }
+#[derive(Debug, Clone, PartialEq)]
+struct NamedBlock<'a> {
+    compare: bool,
+    name: &'a str,
+    ops: Vec<Op<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 struct Block<'a> {
     ops: Vec<Op<'a>>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-struct Function<'a> {
-    block: Block<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -198,8 +180,8 @@ enum Op<'a> {
         instr_length: usize,
         addr_end: usize,
     },
-    FunctionCall {
-        function_name: &'a str,
+    BlockCall {
+        block_name: &'a str,
     },
     Loop {
         count: usize,
@@ -216,47 +198,17 @@ struct SwitchCase<'a> {
     block: Block<'a>,
 }
 
-fn function<'a>(input: &mut &'a str) -> ModalResult<(&'a str, Function<'a>)> {
-    preceded(
-        (multispace, "fn", space),
-        cut_err(separated_pair(
-            function_name,
-            "()".context(StrContext::Label("function brackets")),
-            block
-                .map(|block| Function { block })
-                .context(StrContext::Label("function block")),
-        )),
-    )
-    .parse_next(input)
+fn block_name<'a>(input: &mut &'a str) -> ModalResult<&'a str> {
+    take_while(1.., (AsChar::is_alphanum, '_', '-')).parse_next(input)
 }
 
-fn function_name<'a>(input: &mut &'a str) -> ModalResult<&'a str> {
-    if input.chars().next().is_some_and(|c| c.is_alpha()) {
-        take_while(1.., (AsChar::is_alphanum, '_'))
-            .context(StrContext::Label("function name"))
-            .context(StrContext::Expected(StrContextValue::Description(
-                "a function name consisting of ASCII characters and numbers (a-Z, 0-9)",
-            )))
-            .parse_next(input)
-    } else {
-        fail.context(StrContext::Label("function name"))
-            .context(StrContext::Expected(StrContextValue::Description(
-                "a function name starting with an ASCII character (a-Z)",
-            )))
-            .parse_next(input)
-    }
-    .map_err(ErrMode::Cut)
-}
-
-fn trace_block<'a>(input: &mut &'a str) -> ModalResult<(&'a str, Block<'a>)> {
+fn named_block<'a>(input: &mut &'a str) -> ModalResult<NamedBlock<'a>> {
     (
-        delimited(
-            '\'',
-            cut_err(take_while(1.., (AsChar::is_alphanum, ' ', '_', '-'))),
-            cut_err('\''),
-        ),
+        opt(terminated("compare", space1)).map(|cmp| cmp.is_some()),
+        delimited('\'', cut_err(block_name), cut_err('\'')),
         cut_err(block),
     )
+        .map(|(compare, name, Block { ops })| NamedBlock { compare, name, ops })
         .parse_next(input)
 }
 
@@ -278,7 +230,7 @@ fn block<'a>(input: &mut &'a str) -> ModalResult<Block<'a>> {
 
 fn op<'a>(input: &mut &'a str) -> ModalResult<Op<'a>> {
     // important: try 'range' before 'address' because of ambiguity
-    preceded(multispace, alt((function_call, looop, switch, range)))
+    preceded(multispace, alt((block_call, looop, switch, range)))
         .context(StrContext::Label("statement"))
         .parse_next(input)
 }
@@ -321,9 +273,11 @@ fn range<'a>(input: &mut &'a str) -> ModalResult<Op<'a>> {
         })
 }
 
-fn function_call<'a>(input: &mut &'a str) -> ModalResult<Op<'a>> {
-    terminated(function_name, ("()", end))
-        .map(|function_name| Op::FunctionCall { function_name })
+fn block_call<'a>(input: &mut &'a str) -> ModalResult<Op<'a>> {
+    terminated(block_name, ("()", end))
+        .map(|function_name| Op::BlockCall {
+            block_name: function_name,
+        })
         .parse_next(input)
         .map_err(|e| e.backtrack()) // remove cut_err from function_name
 }
@@ -388,16 +342,14 @@ fn integer(input: &mut &str) -> ModalResult<usize> {
                 .try_map(|s| usize::from_str_radix(s, 8))
                 .context(StrContext::Label("octal number")),
         ),
-        cut_err(take_while(1.., '0'..='9'))
-            .try_map(|s: &str| s.parse::<usize>())
-            .context(StrContext::Label("decimal number")),
+        cut_err(decimal_integer),
     ))
     .parse_next(input)
 }
 
 fn decimal_integer(input: &mut &str) -> ModalResult<usize> {
     take_while(1.., '0'..='9')
-        .context(StrContext::Label("decimal integer"))
+        .context(StrContext::Label("decimal number"))
         .try_map(str::parse::<usize>)
         .parse_next(input)
 }

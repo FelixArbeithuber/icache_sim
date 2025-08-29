@@ -10,6 +10,8 @@ fn main() {
         return;
     };
 
+    let log_memory_accesses = std::env::args().any(|arg| &arg == "--trace");
+
     let current_dir = std::env::current_dir()
         .map_err(|e| format!("unable to get current directory: {e}"))
         .unwrap();
@@ -18,14 +20,14 @@ fn main() {
         .unwrap();
 
     println!("{}", lru_cache.format_info());
-    match Simulation::<1_600>::simulate(&mut lru_cache, &file_content) {
+    match Simulation::<1_600>::simulate(&mut lru_cache, &file_content, log_memory_accesses) {
         Ok(simulation_results) => println!(
             "{}",
             Simulation::compare(
                 &simulation_results,
                 Params {
                     cycles_hit: 1,
-                    cycles_miss: 10
+                    cycles_miss: 25
                 }
             )
         ),

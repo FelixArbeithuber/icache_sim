@@ -1,28 +1,25 @@
-// the total cache size is 32KB
-// => 4 functions with 8KB of instructions completely fill the cache
-
-fn a() {
-    0x0..32..0x2000
+'a' {
+    0x0..32..0x28
 }
 
-fn b() {
-    0x1F40..32..0x3E80
+'b' {
+    0x2000..32..0x2028
 }
 
-fn c() {
-    0x3E80..32..0x5DC0
+'c' {
+    0x4000..32..0x4028
 }
 
-fn d() {
-    0x5DC0..32..0x7D00
+'d' {
+    0x6000..32..0x6028
 }
 
-fn e() {
-    0x5DC0..32..0x7D40
+'extra' {
+    0x8000..32..0x8004
 }
 
-'block 1' {
-    loop(10000) {
+compare 'block1' {
+    loop(1000) {
         a()
         b()
         c()
@@ -30,12 +27,12 @@ fn e() {
     }
 }
 
-'block 2' {
-    loop(8000) {
+compare 'block2' {
+    loop(1000) {
         a()
         b()
         c()
         d()
-        e()
+        extra()
     }
 }
