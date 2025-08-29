@@ -1,7 +1,4 @@
-use std::{
-    io::{Write, stdout},
-    path::Path,
-};
+use std::path::Path;
 
 use crate::{lru::LruCache, trace::TraceFile};
 
@@ -16,6 +13,7 @@ pub struct Simulation<const CLOCK_SPEED_MHZ: u32> {
     name: String,
     hit_count: u32,
     miss_count: u32,
+    memory_accesses: String,
 }
 
 impl<const CLOCK_SPEED_MHZ: u32> Simulation<CLOCK_SPEED_MHZ> {
@@ -44,20 +42,21 @@ impl<const CLOCK_SPEED_MHZ: u32> Simulation<CLOCK_SPEED_MHZ> {
             }
         };
 
-        let mut stdout = stdout().lock();
         let simulation_results = trace_file
             .into_iter()
             .map(|(name, block)| {
-                if log_memory_accesses {
-                    stdout.write_fmt(format_args!("{name}:\n")).unwrap();
-                }
-
                 lru_cache.reset();
+
                 block.into_iter().fold(
                     Simulation {
                         name: name.to_string(),
                         hit_count: 0,
                         miss_count: 0,
+                        memory_accesses: if log_memory_accesses {
+                            format!("{name}:\n")
+                        } else {
+                            String::new()
+                        },
                     },
                     |mut simulation_result, instruction| {
                         // check all byte addresses
@@ -76,12 +75,9 @@ impl<const CLOCK_SPEED_MHZ: u32> Simulation<CLOCK_SPEED_MHZ> {
                         }
 
                         if log_memory_accesses {
-                            stdout
-                                .write_fmt(format_args!(
-                                    "{:X}: hit={:?}\n",
-                                    instruction.address, hit
-                                ))
-                                .unwrap();
+                            simulation_result
+                                .memory_accesses
+                                .push_str(&format!("{:X}: hit={:?}\n", instruction.address, hit));
                         }
 
                         simulation_result
@@ -89,10 +85,6 @@ impl<const CLOCK_SPEED_MHZ: u32> Simulation<CLOCK_SPEED_MHZ> {
                 )
             })
             .collect();
-
-        if log_memory_accesses {
-            _ = stdout.write(b"\n");
-        }
 
         Ok(simulation_results)
     }
@@ -139,6 +131,14 @@ impl<const CLOCK_SPEED_MHZ: u32> Simulation<CLOCK_SPEED_MHZ> {
         }
 
         result.join("\n")
+    }
+
+    pub fn memory_accesses(simulation_results: &[Self]) -> String {
+        simulation_results
+            .iter()
+            .filter(|sim| !sim.memory_accesses.is_empty())
+            .map(|sim| sim.memory_accesses.clone())
+            .collect::<String>()
     }
 
     pub fn compare(simulation_results: &[Self], config: Params) -> String {

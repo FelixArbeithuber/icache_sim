@@ -23,13 +23,16 @@ pub fn run_simulation(
     result.push(lru_cache.format_info());
 
     match Simulation::<1_600>::simulate(&mut lru_cache, trace, log_memory_accesses) {
-        Ok(simulation_results) => result.push(Simulation::compare(
-            &simulation_results,
-            Params {
-                cycles_hit,
-                cycles_miss,
-            },
-        )),
+        Ok(simulation_results) => {
+            result.push(Simulation::memory_accesses(&simulation_results));
+            result.push(Simulation::compare(
+                &simulation_results,
+                Params {
+                    cycles_hit,
+                    cycles_miss,
+                },
+            ));
+        }
         Err(e) => return e,
     };
 

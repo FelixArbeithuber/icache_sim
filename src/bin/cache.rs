@@ -21,16 +21,19 @@ fn main() {
 
     println!("{}", lru_cache.format_info());
     match Simulation::<1_600>::simulate(&mut lru_cache, &file_content, log_memory_accesses) {
-        Ok(simulation_results) => println!(
-            "{}",
-            Simulation::compare(
-                &simulation_results,
-                Params {
-                    cycles_hit: 1,
-                    cycles_miss: 25
-                }
+        Ok(simulation_results) => {
+            println!("{}", Simulation::memory_accesses(&simulation_results));
+            println!(
+                "{}",
+                Simulation::compare(
+                    &simulation_results,
+                    Params {
+                        cycles_hit: 1,
+                        cycles_miss: 25
+                    }
+                )
             )
-        ),
+        }
         Err(e) => println!("{e}"),
     };
 }
