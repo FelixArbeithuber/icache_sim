@@ -11,6 +11,7 @@ fn main() {
     };
 
     let log_memory_accesses = std::env::args().any(|arg| &arg == "--trace");
+    let skip_cache_description = std::env::args().any(|arg| &arg == "--skip-cache-desc");
 
     let current_dir = std::env::current_dir()
         .map_err(|e| format!("unable to get current directory: {e}"))
@@ -19,7 +20,10 @@ fn main() {
         .map_err(|e| format!("failed to read file: {e}"))
         .unwrap();
 
-    println!("{}", lru_cache.format_info());
+    if !skip_cache_description {
+        println!("{}", lru_cache.format_info());
+    }
+
     match Simulation::<1_600>::simulate(&mut lru_cache, &file_content, log_memory_accesses) {
         Ok(simulation_results) => {
             println!("{}", Simulation::memory_accesses(&simulation_results));

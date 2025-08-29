@@ -1,1 +1,2 @@
-Get-ChildItem $PSScriptRoot -Filter *.trace | Foreach-Object { cargo run --release $_.FullName > ($_.FullName + '.output') }
+cargo build --release
+Get-ChildItem $PSScriptRoot -Filter *.trace | Foreach-Object { &($PSScriptRoot + "/../target/release/cache.exe") $_.FullName '--skip-cache-desc' > ($_.FullName + '.output') }

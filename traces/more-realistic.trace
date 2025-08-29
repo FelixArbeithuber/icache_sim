@@ -14,7 +14,11 @@
     0x6000..32..0x6190
 }
 
-'e' {
+'conflict1' {
+    0x8000..32..0x8004
+}
+
+'conflict2' {
     0x8000..32..0x8190
 }
 
@@ -33,6 +37,16 @@ compare 'block-2' {
         b()
         c()
         d()
-        e()
+        conflict1()
+    }
+}
+
+compare 'block-3' {
+    loop(10000) {
+        a()
+        b()
+        c()
+        d()
+        conflict2()
     }
 }
