@@ -32,7 +32,7 @@ compare 'block-1' {
 }
 
 compare 'block-2' {
-    loop(10000) {
+    loop(9975) {
         a()
         b()
         c()
@@ -42,7 +42,7 @@ compare 'block-2' {
 }
 
 compare 'block-3' {
-    loop(10000) {
+    loop(8000) {
         a()
         b()
         c()
