@@ -1,16 +1,16 @@
-fn a() {
+'a' {
     0x0..32..0x1F40
 }
 
-fn b() {
+'b' {
     0x1F40..32..0x3E80
 }
 
-fn c() {
+'c' {
     0x3E80..32..0x5DC0
 }
 
-'functions' {
+compare 'functions' {
     loop(10000) {
         a()
         a()
@@ -20,7 +20,7 @@ fn c() {
     }
 }
 
-'inlined' {
+compare 'inlined' {
     loop(10000) {
         0x0..32..0x1F40   // inlined function a()
         0x1F40..32..0x3E80 // inlined function a()

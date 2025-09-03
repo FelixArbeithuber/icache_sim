@@ -15,20 +15,15 @@
 }
 
 'e1' {
-    0x8000..32..0x80FC
-    0x80FC..16..0x80FE
-
-    0x80FE..16..0x8100
+    0x8000..32..0x8100
 }
 
 'e2' {
-    0x8000..32..0x80FC
-    0x80FC..16..0x80FE
-
-    0x80FE..32..0x8102 // large instruction
+    0x8000..32..0x8100
+    0x8100..32..0x8104 // extra instruction
 }
 
-compare 'fits-cacheline' {
+compare 'block-1' {
     loop(10000) {
         a()
         b()
@@ -38,7 +33,7 @@ compare 'fits-cacheline' {
     }
 }
 
-compare 'doesnt-fit-cacheline' {
+compare 'block-2' {
     loop(10000) {
         a()
         b()
