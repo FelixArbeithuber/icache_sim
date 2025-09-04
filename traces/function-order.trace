@@ -4,7 +4,7 @@
     0x0..32..0x100
 }
 
-'unrelated1' {
+'unrelated' {
     0x2000..32..0x2100
 }
 
@@ -46,7 +46,7 @@
     0x8000..32..0x8100
 }
 
-'unrelated2' {
+'unrelated-new-position' {
     0x8100..32..0x8200
 }
 
